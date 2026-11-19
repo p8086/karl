@@ -225,8 +225,8 @@ packaging/          install.sh for the Linux package
 **GitHub release.** The `.github/workflows/release.yml` workflow builds the executables by itself. Update `VERSION` in `karl/__init__.py`, then create and push a tag with the same number:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 GitHub runs the tests, builds `Karl.exe` on Windows and `karl-linux-x86_64.tar.gz` on Linux and attaches them to a new release. If the tag doesn't match `VERSION`, it stops before building.
