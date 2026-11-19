@@ -43,6 +43,10 @@ class FakeClient:
     def get_mod_by_id(self, g, m):
         return self._mod()
 
+    def get_modfile(self, g, m, f):
+        return {"id": f, "version": f"{f}.0", "filename": "test.zip",
+                "download": {"binary_url": "https://x/test.zip"}}
+
     def subscribed_mods(self, g):
         return [self._mod()] if 42 in FakeClient.subs else []
 
@@ -366,6 +370,96 @@ class Tests(unittest.TestCase):
         lib.rename_folder("Altra", "Nuovo nome")
         self.assertEqual(per("Nuovo nome"), 1)
         self.assertEqual(per("Altra"), 0)
+
+    def test_favorites_and_notes(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertTrue(lib.set_favorite([e.mod_id]))
+        lib.set_note(e.mod_id, "  solo   con amici ")
+        again = Library(self.cfg, client_factory=FakeClient)
+        self.assertTrue(again.mods[e.mod_id].favorite)
+        self.assertEqual(again.mods[e.mod_id].note, "solo con amici")
+        self.assertFalse(lib.set_favorite([e.mod_id]))
+
+    def test_profile_export_import(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        src = self.paks.parent / "prof"
+        src.mkdir()
+        (src / "Mio.pak").write_bytes(b"mio")
+        lib.add_local_file(str(src / "Mio.pak"))
+        lib.set_favorite([e.mod_id])
+        lib.set_note(e.mod_id, "nota")
+        e.hold = True
+        lib.create_folder("Amici", copy_current=True)
+        lib.folders["Amici"][e.mod_id] = False
+        lib.update_all()
+        out = self.paks.parent / "conf.karl"
+        self.assertEqual(lib.export_profile(out), 1)
+
+        for f in (library.LIBRARY_FILE, library.FOLDERS_FILE, library.SNAPSHOTS_FILE):
+            f.unlink(missing_ok=True)
+        import shutil
+        shutil.rmtree(library.CACHE_DIR, ignore_errors=True)
+        for p in self.paks.glob("FSD-WindowsNoEditor_karl_*"):
+            p.unlink()
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        other = Library(self.cfg, client_factory=FakeClient)
+        local = other.create_folder("Mia")
+        failed = other.import_profile(out)
+        self.assertEqual(failed, [])
+        m = other.mods[e.mod_id]
+        self.assertEqual((m.version, m.hold, m.favorite, m.note), ("1.0", True, True, "nota"))
+        self.assertIn("Amici", other.folders)
+        self.assertFalse(other.folders["Amici"][e.mod_id])
+        self.assertIn(local, other.folders)
+        self.assertEqual(other.folders[local], {})
+        self.assertNotIn(".karl-import", other.folders)
+        other.update_all()
+        self.assertTrue(self.inst("test-mod").exists())
+        bad = self.paks.parent / "bad.karl"
+        bad.write_text("{}")
+        with self.assertRaises(library.ModioError):
+            other.read_profile(bad)
+
+    def test_cache_cleanup(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        lib.update_all()
+        self.assertTrue(lib.has_previous(e.mod_id))
+        orphan = library.CACHE_DIR / "999" / "paks"
+        orphan.mkdir(parents=True)
+        (orphan / "x.pak").write_bytes(b"x" * 100)
+        thumbs = library.CACHE_DIR / "thumbs"
+        thumbs.mkdir(parents=True, exist_ok=True)
+        (thumbs / "a.img").write_bytes(b"y" * 50)
+        rep = lib.cache_report()
+        self.assertGreaterEqual(rep["unused"], 100)
+        self.assertGreaterEqual(rep["covers"], 50)
+        self.assertGreater(rep["previous"], 0)
+        self.assertGreater(rep["mods"], 0)
+        freed = lib.clean_cache({"unused", "covers"})
+        self.assertGreaterEqual(freed, 150)
+        self.assertFalse(orphan.exists())
+        self.assertTrue(lib.has_previous(e.mod_id))
+        lib.clean_cache({"previous"})
+        self.assertFalse(lib.has_previous(e.mod_id))
+        self.assertTrue(all(Path(p).is_file() for p in lib.mods[e.mod_id].cached_paks))
+        self.assertTrue(self.inst("test-mod").exists())
+
+    def test_selfupdate(self):
+        from karl import selfupdate
+        self.assertTrue(selfupdate.is_newer("0.2.0", "0.1.1"))
+        self.assertTrue(selfupdate.is_newer("v0.1.10", "0.1.9"))
+        self.assertFalse(selfupdate.is_newer("0.1.1", "0.1.1"))
+        self.assertFalse(selfupdate.is_newer("boh", "0.1.1"))
+        import json as _json
+        self.assertEqual(selfupdate.latest_version(lambda u: _json.dumps({"tag_name": "v0.3.0"}).encode()), "0.3.0")
+        self.assertIsNone(selfupdate.latest_version(lambda u: _json.dumps({"tag_name": "v9", "prerelease": True}).encode()))
+        def boom(u):
+            raise OSError("404")
+        self.assertIsNone(selfupdate.latest_version(boom))
 
     def test_rollback(self):
         lib = self.lib

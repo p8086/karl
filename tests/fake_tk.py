@@ -211,7 +211,9 @@ def install():
               showwarning=lambda *a, **k: messages.append(("warn",) + a),
               askyesno=lambda *a, **k: True, messages=messages)
     fd = _mod("tkinter.filedialog", askdirectory=lambda **k: "",
-              askopenfilenames=lambda **k: ())
+              askopenfilenames=lambda **k: (), answers=[])
+    fd.asksaveasfilename = lambda **k: fd.answers.pop(0) if fd.answers else ""
+    fd.askopenfilename = lambda **k: fd.answers.pop(0) if fd.answers else ""
     sd = _mod("tkinter.simpledialog", answers=[])
     sd.askstring = lambda *a, **k: sd.answers.pop(0) if sd.answers else None
     tk.ttk, tk.messagebox, tk.filedialog, tk.simpledialog = ttk, mb, fd, sd

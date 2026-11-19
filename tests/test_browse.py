@@ -1077,5 +1077,92 @@ class LinuxWindowTests(GuiBase):
         self.assertTrue(cfg.avatar_url)
 
 
+class QualityTests(GuiBase):
+    def test_favorite_note_profile_cache_updates(self):
+        FakeModio.subs = set()
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True).save()
+        app = gui.App()
+        pump(app, 80)
+        mine, lib = app.mine, app.lib
+        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
+        mine.refresh()
+        self.assertEqual(mine.tree._rows["30"][3], "☆")
+        mine.tree.click("30", column="#4")
+        self.assertTrue(lib.mods[30].favorite)
+        self.assertEqual(mine.tree._rows["30"][3], "★")
+        self.assertEqual(mine.wanted, {})
+        mine.show_var.set(mine.show_choices[1])
+        mine.refresh()
+        self.assertEqual(mine.tree.get_children(), ["30"])
+        mine._move_selected(1)
+        self.assertIn("ordine", app.status.get())
+        mine.show_var.set(mine.show_choices[0])
+        mine.refresh()
+        self.assertEqual(sorted(mine.tree.get_children()), ["30", "31"])
+        mine.tree.selection_set(["30"])
+        sd = fake_tk.sys.modules["tkinter.simpledialog"]
+        sd.answers[:] = ["solo con amici"]
+        mine.edit_note()
+        self.assertEqual(lib.mods[30].note, "solo con amici")
+        self.assertTrue(mine.tree._rows["30"][0].endswith(" ✎"))
+        self.assertIn("solo con amici", app.status.get())
+
+        fd = fake_tk.sys.modules["tkinter.filedialog"]
+        out = self.paks.parent / "conf.karl"
+        fd.answers[:] = [str(out)]
+        app.export_profile()
+        self.assertTrue(out.exists())
+        lib.remove(30)
+        self.assertNotIn(30, lib.mods)
+        fd.answers[:] = [str(out)]
+        app.import_profile()
+        pump(app, 120)
+        self.assertIn(30, lib.mods)
+        self.assertTrue(lib.mods[30].favorite)
+        self.assertEqual(lib.mods[30].note, "solo con amici")
+        self.assertTrue(self.installed("mod-30").exists())
+
+        dlg = gui.SettingsDialog(app)
+        dlg.auto_updates.set(True)
+        dlg.karl_updates.set(False)
+        dlg.save()
+        cfg = Config.load()
+        self.assertTrue(cfg.auto_check_updates)
+        self.assertFalse(cfg.check_karl_updates)
+
+        cache = gui.CacheDialog(app)
+        self.assertIn("mods", cache.report)
+        cache.clean()
+        self.assertIn("Liberati", app.status.get())
+
+        calls = []
+        saved = mine.check_updates
+        mine.check_updates = lambda: calls.append(1)
+        self.addCleanup(setattr, mine, "check_updates", saved)
+        app.auto_check_updates()
+        self.assertEqual(calls, [1])
+
+        opened = []
+        saved_open = gui.webbrowser.open
+        gui.webbrowser.open = opened.append
+        self.addCleanup(setattr, gui.webbrowser, "open", saved_open)
+        app.config_.check_karl_updates = True
+        app.check_karl_update(fetch=lambda u: b'{"tag_name": "v9.0.0"}')
+        pump(app)
+        self.assertEqual(opened, [gui.selfupdate.RELEASES_PAGE])
+        mb = fake_tk.sys.modules["tkinter.messagebox"]
+        saved_ask = mb.askyesno
+        mb.askyesno = lambda *a, **k: False
+        self.addCleanup(setattr, mb, "askyesno", saved_ask)
+        app.check_karl_update(fetch=lambda u: b'{"tag_name": "v9.0.0"}')
+        pump(app)
+        self.assertEqual(app.config_.skip_karl_version, "9.0.0")
+        app.check_karl_update(fetch=lambda u: b'{"tag_name": "v9.0.0"}')
+        pump(app)
+        self.assertEqual(len(opened), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -142,6 +142,9 @@ class ModioClient:
     def get_mod_by_id(self, game_id: int, mod_id: int) -> dict:
         return self._json("GET", f"/games/{game_id}/mods/{mod_id}")
 
+    def get_modfile(self, game_id: int, mod_id: int, file_id: int) -> dict:
+        return self._json("GET", f"/games/{game_id}/mods/{mod_id}/files/{file_id}")
+
     def me(self) -> dict:
         return self._json("GET", "/me")
 

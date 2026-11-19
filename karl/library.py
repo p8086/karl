@@ -101,6 +101,9 @@ class Config:
     ignore_integration: bool = False
     dev_mode: bool = False
     dev_restart: bool = False
+    auto_check_updates: bool = False
+    check_karl_updates: bool = True
+    skip_karl_version: str = ""
 
     @property
     def logged_in(self) -> bool:
@@ -195,6 +198,8 @@ class ModEntry:
     prev_file_id: Optional[int] = None
     prev_file_mtime: float = 0.0
     hold: bool = False
+    favorite: bool = False
+    note: str = ""
 
     @property
     def has_update(self) -> bool:
@@ -725,6 +730,153 @@ class Library:
                 failed.append(slug)
         self.save()
         return name, failed
+
+    def set_favorite(self, ids: list[int], value: Optional[bool] = None) -> bool:
+        entries = [self.mods[i] for i in ids if i in self.mods]
+        if not entries:
+            return False
+        if value is None:
+            value = not all(e.favorite for e in entries)
+        for e in entries:
+            e.favorite = value
+        self._save_list()
+        return value
+
+    def set_note(self, mod_id: int, text: str) -> None:
+        self.mods[mod_id].note = " ".join((text or "").split())
+        self._save_list()
+
+    PROFILE_FORMAT = "karl-profile"
+
+    def export_profile(self, path: Path) -> int:
+        self._sync_folders()
+        mods, skipped = {}, set()
+        for i, e in self.mods.items():
+            if e.source != SOURCE_MODIO:
+                skipped.add(i)
+                continue
+            mods[str(i)] = {"game_id": e.game_id, "slug": e.slug, "name": e.name,
+                            "file_id": e.file_id, "hold": e.hold,
+                            "favorite": e.favorite, "note": e.note}
+        folders = [{"name": n, "mods": [[i, on] for i, on in f.items()
+                                        if i in self.mods and i not in skipped]}
+                   for n, f in self.folders.items()]
+        data = {"format": self.PROFILE_FORMAT, "version": 1, "active": self.active_folder,
+                "folders": folders, "mods": mods}
+        path = Path(path)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+        return len(skipped)
+
+    @classmethod
+    def read_profile(cls, path: Path) -> dict:
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if data.get("format") != cls.PROFILE_FORMAT:
+                raise ValueError
+            mods = {int(k): v for k, v in data["mods"].items()}
+            folders = [(str(f["name"]), [(int(i), bool(on)) for i, on in f["mods"]])
+                       for f in data["folders"]]
+        except Exception as err:
+            raise ModioError(tr("profile.invalid")) from err
+        if not folders:
+            raise ModioError(tr("profile.invalid"))
+        return {"mods": mods, "folders": folders, "active": str(data.get("active") or folders[0][0])}
+
+    def import_profile(self, path: Path, progress: Optional[Callable[[int, int], None]] = None,
+                       log: Callable[[str], None] = lambda s: None) -> list[str]:
+        data = self.read_profile(path)
+        self._sync_folders()
+        before = {n: dict(f) for n, f in self.folders.items()}
+        staging = ".karl-import"
+        self.folders[staging] = {}
+        self.active_folder = staging
+        failed: list[str] = []
+        total = len(data["mods"])
+        for n, (mid, info) in enumerate(data["mods"].items(), 1):
+            name = str(info.get("name") or info.get("slug") or mid)
+            log(tr("profile.importing", i=n, n=total, name=name))
+            try:
+                e = self.mods.get(mid)
+                if e is None:
+                    gid = int(info["game_id"])
+                    mod = self.client.get_mod_by_id(gid, mid)
+                    fid = info.get("file_id")
+                    if info.get("hold") and fid and (mod.get("modfile") or {}).get("id") != fid:
+                        mod = dict(mod, modfile=self.client.get_modfile(gid, mid, int(fid)))
+                    e = self.add_mod_object(mod, progress=progress)
+                    e.hold = bool(info.get("hold"))
+                e.favorite = e.favorite or bool(info.get("favorite"))
+                if info.get("note"):
+                    e.note = str(info["note"])
+            except Exception:
+                failed.append(name)
+        self.folders = {n: {i: on for i, on in f.items() if i in self.mods}
+                        for n, f in before.items()}
+        for name, mods in data["folders"]:
+            self.folders[name] = {i: on for i, on in mods if i in self.mods}
+        target = data["active"] if data["active"] in self.folders else data["folders"][0][0]
+        self.active_folder = target
+        folder = self.folders[target]
+        for i, e in self.mods.items():
+            e.enabled = bool(folder.get(i, False))
+        self.save()
+        return failed
+
+    CACHE_KINDS = ("unused", "previous", "covers")
+
+    @staticmethod
+    def _du(path: Path) -> int:
+        if path.is_file():
+            return path.stat().st_size
+        total = 0
+        if path.is_dir():
+            for p in path.rglob("*"):
+                try:
+                    if p.is_file():
+                        total += p.stat().st_size
+                except OSError:
+                    pass
+        return total
+
+    def _cache_targets(self) -> dict[str, list[Path]]:
+        used_dirs = {Path(p).parent for e in self.mods.values() for p in e.cached_paks}
+        prev_dirs = {Path(p).parent for e in self.mods.values() for p in e.prev_paks} - used_dirs
+        unused: list[Path] = []
+        if CACHE_DIR.is_dir():
+            for d in CACHE_DIR.iterdir():
+                if d.is_dir() and d.name.isdigit():
+                    if int(d.name) not in self.mods:
+                        unused.append(d)
+                    elif (d / "download").exists():
+                        unused.append(d / "download")
+        return {"unused": unused, "previous": sorted(prev_dirs), "covers": [CACHE_DIR / "thumbs"]}
+
+    def cache_report(self) -> dict[str, int]:
+        report = {k: sum(self._du(p) for p in ps) for k, ps in self._cache_targets().items()}
+        report["mods"] = sum(self._du(Path(p)) for e in self.mods.values() for p in e.cached_paks)
+        report["snapshots"] = self._du(SNAPSHOT_BLOBS)
+        return report
+
+    def clean_cache(self, kinds: set[str]) -> int:
+        freed = 0
+        targets = self._cache_targets()
+        for kind in self.CACHE_KINDS:
+            if kind not in kinds:
+                continue
+            for p in targets[kind]:
+                size = self._du(p)
+                shutil.rmtree(p, ignore_errors=True)
+                if not p.exists():
+                    freed += size
+            if kind == "previous":
+                for e in self.mods.values():
+                    if e.prev_paks and not all(Path(p).is_file() for p in e.prev_paks):
+                        e.prev_paks, e.prev_version = [], ""
+                        e.prev_file_id, e.prev_file_mtime = None, 0.0
+                self._save_list()
+        return freed
 
     def remove(self, mod_id: int, log: Callable[[str], None] = lambda s: None) -> None:
         folder = self.folders.get(self.active_folder, {})

@@ -55,7 +55,7 @@ Click **Sign in with mod.io** at the top right:
 
 In **Settings → mod.io token** you see which account you are connected to and the masked token (with **Show** and **Copy**), plus the expiry date read from the token, with a warning when fewer than 7 days are left. There are also **Verify**, **Change token…**, **Remove** and **Manage on mod.io** buttons. The token stays on your PC only. You can revoke it any time on mod.io or with **Sign out**.
 
-<p align="center"><img src="docs/screenshots/settings-token.png" alt="The mod.io token in Settings" width="420"></p>
+<p align="center"><img src="docs/screenshots/settings-token.png" alt="Settings: mod.io token, language, game folder and maintenance" width="420"></p>
 
 Why no email login? mod.io only allows it for apps using the game's official API key (the DRG developers' one). Third-party apps sign in with a token created by the user.
 
@@ -116,6 +116,14 @@ The counters under the list show how many mods are installed, pending and waitin
 **Previous version.** When a mod updates, Karl keeps the previous version in its cache. If an update breaks something, select the mod and press **Previous version**: it goes back and stays locked (🔒 next to the version), so Install and save won't update it again. Pressing the same button again brings back the latest one.
 
 **Time machine.** Every time you press **Install and save** (also through Play or when switching folder) Karl takes a snapshot of the active folder: which mods it had, in what order, on or off and at which version. If nothing changed, no new snapshot is made. **🕘 Time machine** lists them by date, with a summary of what changed each time (mods added or removed, versions, switches, order). Pick a moment and press **Restore**: the folder goes back exactly as it was, even with mods you had removed meanwhile. Mods brought back to a different version stay locked (🔒) until you press **Previous version** to return to the latest one. Each version's .pak files are stored only once (`~/.cache/karl/istantanee/`) and Karl keeps the last 50 snapshots of each folder (a folder you use a lot doesn't erase the others' history; if you rename a folder, its history follows it).
+
+**Favorites and notes.** Click the ☆ at the right end of a row to add the mod to your favorites (★), click again to remove it. The **Show** drop-down above the list switches between all mods and favorites only (to change the load order, show all mods). Select a mod and press **Note…** to write a short note (for example "only with friends" or "breaks the HUD with X"): mods with a note show ✎ next to their name, and selecting one shows the note in the status bar.
+
+**Moving to another PC.** In **Settings → Export configuration…** Karl saves one `.karl` file with all your folders, load order, switches, locked versions, favorites and notes. On the other PC (Windows or Linux) use **Import configuration…**: Karl downloads the missing mods, restores locked mods at their exact version and applies the active folder. Folders with the same name are replaced; mods added from .pak files are not included, since they only exist on your PC.
+
+**Disk space.** **Settings → Disk space…** shows how much space mods in use, time machine snapshots, files no longer used, downloaded covers and previous versions take, and frees what you select. Deleting previous versions means **Previous version** won't work until the mods update again.
+
+**Automatic checks.** In **Settings → Maintenance** you can have Karl check for mod updates at every startup, and get a notice when a new version of Karl is released on GitHub (you can skip a version you don't want).
 
 **Developer mode** (for modders). With the box ticked, every 2 seconds Karl checks the date of the .pak files of mods you added from a file: when you rebuild one, it reimports it and puts it back in the game by itself. While DRG is running the pak is in use: Karl waits until you close the game or, if you also ticked **Restart DRG when a mod changes**, closes DRG, updates the mod and starts it again.
 

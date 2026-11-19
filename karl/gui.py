@@ -20,7 +20,8 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable, Optional
 
 from . import APP_TITLE, VERSION, game
-from .browse import BrowseTab, Choice, flat_button, human_date, set_button_style
+from .browse import BrowseTab, Choice, flat_button, human_date, human_size, set_button_style
+from . import selfupdate
 from .library import (MODE_LOCAL, MODE_SUBSCRIBE, SOURCE_FILE, Config, Library,
                       extract_local_paths, find_paks_dir)
 from . import i18n
@@ -78,6 +79,8 @@ class App(tk.Tk):
         self.after(800, self.check_foreign_loader)
         self.after(1500, self.check_modio_subscriptions)
         self.after(2500, self.check_integration)
+        self.after(3000, self.auto_check_updates)
+        self.after(4000, self.check_karl_update)
 
     def check_integration(self):
         try:
@@ -396,6 +399,86 @@ class App(tk.Tk):
         if self.browse.started:
             self.browse.refresh_cards_state()
 
+    def auto_check_updates(self):
+        if not self.config_.auto_check_updates or self.busy or not self.lib.folder_mods():
+            return
+        self.mine.check_updates()
+
+    def check_karl_update(self, fetch=None):
+        cfg = self.config_
+        if not cfg.check_karl_updates:
+            return
+        kw = {"fetch": fetch} if fetch else {}
+
+        def done(version):
+            if not version or not selfupdate.is_newer(version) or version == cfg.skip_karl_version:
+                return
+            if messagebox.askyesno(APP_TITLE, tr("karl_update.available", version=version,
+                                                 current=VERSION)):
+                webbrowser.open(selfupdate.RELEASES_PAGE)
+            else:
+                cfg.skip_karl_version = version
+                cfg.save()
+
+        self.submit(lambda: selfupdate.latest_version(**kw), done, lambda err: None)
+
+    def export_profile(self, parent=None):
+        path = filedialog.asksaveasfilename(
+            parent=parent or self, title=tr("profile.export"), defaultextension=".karl",
+            initialfile="karl-config.karl",
+            filetypes=[(tr("profile.file_type"), "*.karl"), (tr("mine.files_all"), "*.*")])
+        if not path:
+            return
+        try:
+            skipped = self.lib.export_profile(Path(path))
+        except Exception as err:
+            self.show_error(str(err))
+            return
+        msg = tr("profile.exported", path=path)
+        if skipped:
+            msg += "\n\n" + tr("profile.skipped", n=skipped)
+        messagebox.showinfo(APP_TITLE, msg, parent=parent or self)
+        self.set_status(tr("profile.exported", path=path))
+
+    def import_profile(self, parent=None):
+        if self.busy:
+            return
+        path = filedialog.askopenfilename(
+            parent=parent or self, title=tr("profile.import"),
+            filetypes=[(tr("profile.file_type"), "*.karl"), (tr("mine.files_all"), "*.*")])
+        if not path:
+            return
+        try:
+            data = self.lib.read_profile(Path(path))
+        except Exception as err:
+            self.show_error(str(err))
+            return
+        same = [n for n, _ in data["folders"] if n in self.lib.folders]
+        question = tr("profile.confirm", n=len(data["mods"]), folders=len(data["folders"]))
+        if same:
+            question += "\n\n" + tr("profile.replace", names=", ".join(same))
+        if not messagebox.askyesno(APP_TITLE, question, parent=parent or self):
+            return
+        if parent is not None:
+            parent.destroy()
+        self.mine.wanted.clear()
+
+        def work():
+            failed = self.lib.import_profile(Path(path), progress=self.on_progress, log=self.log)
+            report = self.lib.update_all(progress=self.on_progress, log=self.log)
+            self.post(self._after_import, report, failed, len(data["folders"]))
+
+        self.run(tr("profile.importing_all"), work)
+
+    def _after_import(self, report: dict, failed: list[str], n_folders: int):
+        self.mine._refresh_folders()
+        self.mine._after_update(report)
+        if failed:
+            messagebox.showwarning(APP_TITLE, tr("profile.failed", names=", ".join(failed)))
+        if not report["failed"]:
+            self.set_status(tr("profile.imported", n=n_folders))
+        self.check_integration()
+
     def open_settings(self):
         SettingsDialog(self)
 
@@ -484,6 +567,14 @@ class MineTab(tk.Frame):
             side="left", padx=(8, 0))
         self.unsaved_lbl = tk.Label(bar, bg=BG, fg=ACCENT, font=(FONT, 9), text="")
         self.unsaved_lbl.pack(side="left", padx=(12, 0))
+        self.show_choices = [tr("mine.show_all"), tr("mine.show_fav")]
+        self.show_var = tk.StringVar(value=self.show_choices[0])
+        show_combo = ttk.Combobox(bar, textvariable=self.show_var, values=self.show_choices,
+                                  state="readonly", width=16)
+        show_combo.pack(side="right")
+        show_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+        tk.Label(bar, text=tr("mine.show_label"), bg=BG, fg=MUTED,
+                 font=(FONT, 9)).pack(side="right", padx=(12, 6))
         footer = tk.Frame(self, bg=BG, padx=16)
         footer.pack(side="bottom", fill="x", pady=(0, 6))
         counts = tk.Frame(footer, bg=BG)
@@ -503,14 +594,16 @@ class MineTab(tk.Frame):
         self.sw_on = tk.PhotoImage(file=str(ASSETS / "switch_on.png"))
         self.sw_off = tk.PhotoImage(file=str(ASSETS / "switch_off.png"))
         self.wanted: dict[int, bool] = {}
-        cols = ("nome", "versione", "modalita")
+        cols = ("nome", "versione", "modalita", "preferito")
         self.tree = ttk.Treeview(mid, columns=cols, show="tree headings", selectmode="extended")
         self.tree.heading("#0", image=self.sw_off, command=self.toggle_all)
         self.tree.column("#0", width=64, minwidth=64, anchor="center", stretch=False)
-        for c, key, w in zip(cols, ("mine.col_name", "mine.col_version", "mine.col_mode"),
+        for c, key, w in zip(cols[:3], ("mine.col_name", "mine.col_version", "mine.col_mode"),
                              (440, 160, 120)):
             self.tree.heading(c, text=tr(key))
             self.tree.column(c, width=w, anchor="w")
+        self.tree.heading("preferito", text="★")
+        self.tree.column("preferito", width=48, minwidth=48, anchor="center", stretch=False)
         self.tree.tag_configure("off", foreground=MUTED)
         self.tree.pack(side="left", fill="both", expand=True)
         self.tree.bind("<Button-1>", self._on_click, add="+")
@@ -519,6 +612,7 @@ class MineTab(tk.Frame):
         self._drag: Optional[str] = None
         self._drag_moved = False
         self.tree.bind("<Double-1>", self._on_double)
+        self.tree.bind("<<TreeviewSelect>>", self.show_note, add="+")
         self.tree.bind("<space>", lambda e: (self.toggle(), "break")[1])
         self.tree.bind("<Alt-Up>", lambda e: (self._move_selected(-1), "break")[1])
         self.tree.bind("<Alt-Down>", lambda e: (self._move_selected(1), "break")[1])
@@ -530,7 +624,8 @@ class MineTab(tk.Frame):
         side.pack(side="left", fill="y")
         for key, cmd in (("mine.remove", self.remove),
                          ("mine.open", self.open_page),
-                         ("rollback.button", self.rollback)):
+                         ("rollback.button", self.rollback),
+                         ("mine.note", self.edit_note)):
             ttk.Button(side, text=tr(key), command=cmd, width=20).pack(fill="x", pady=3)
         tk.Label(side, text=tr("dev.title"), bg=BG, fg=ACCENT, font=(FONT, 9, "bold"),
                  anchor="w").pack(fill="x", pady=(16, 2))
@@ -616,7 +711,7 @@ class MineTab(tk.Frame):
     def refresh(self):
         selected = self.tree.selection()
         self.tree.delete(*self.tree.get_children())
-        mods = self.lib.folder_mods()
+        mods = self.visible_mods()
         for m in mods:
             on = self.is_on(m)
             ver = m.version or "-"
@@ -624,18 +719,27 @@ class MineTab(tk.Frame):
                 ver = f"{ver} 🔒"
             if m.has_update:
                 ver = f"{ver} → {m.latest_version}"
+            label = m.name + (" ✎" if m.note else "")
             self.tree.insert("", "end", iid=str(m.mod_id), text="",
                              image=self.sw_on if on else self.sw_off,
                              tags=() if on else ("off",),
-                             values=(m.name, ver,
+                             values=(label, ver,
                                      tr("mode.file") if m.source == SOURCE_FILE
-                                     else (m.approval or "-")))
+                                     else (m.approval or "-"),
+                                     "★" if m.favorite else "☆"))
         keep = [i for i in selected if self.tree.exists(i)] if selected else []
         if keep:
             self.tree.selection_set(keep)
         all_on = bool(mods) and all(self.is_on(m) for m in mods)
         self.tree.heading("#0", image=self.sw_on if all_on else self.sw_off)
         self._update_unsaved()
+
+    def only_favorites(self) -> bool:
+        return self.show_var.get() == self.show_choices[1]
+
+    def visible_mods(self) -> list:
+        mods = self.lib.folder_mods()
+        return [m for m in mods if m.favorite] if self.only_favorites() else mods
 
     def is_on(self, m) -> bool:
         return self.wanted.get(m.mod_id, m.enabled)
@@ -658,6 +762,12 @@ class MineTab(tk.Frame):
 
     def _on_click(self, e):
         region = self.tree.identify_region(e.x, e.y)
+        if region in ("tree", "cell") and self.tree.identify_column(e.x) == "#4":
+            row = self.tree.identify_row(e.y)
+            if row and int(row) in self.lib.mods:
+                self.lib.set_favorite([int(row)])
+                self.refresh()
+            return "break"
         if region in ("tree", "cell") and self.tree.identify_column(e.x) != "#0":
             self._drag = self.tree.identify_row(e.y) or None
             self._drag_moved = False
@@ -673,6 +783,9 @@ class MineTab(tk.Frame):
     def _on_drag(self, e):
         if not self._drag or self.app.busy:
             return
+        if self.only_favorites():
+            self.app.set_status(tr("mine.order_all_hint"))
+            return
         target = self.tree.identify_row(e.y)
         if target and target != self._drag:
             self.tree.move(self._drag, "", self.tree.index(target))
@@ -686,6 +799,9 @@ class MineTab(tk.Frame):
 
     def _move_selected(self, delta: int):
         sel = self.selected_ids()
+        if self.only_favorites():
+            self.app.set_status(tr("mine.order_all_hint"))
+            return
         if len(sel) == 1:
             self.move_mod(sel[0], delta)
 
@@ -706,13 +822,13 @@ class MineTab(tk.Frame):
             self.tree.selection_set([str(mod_id)])
 
     def _on_double(self, e):
-        if self.tree.identify_column(e.x) == "#0":
+        if self.tree.identify_column(e.x) in ("#0", "#4"):
             return "break"
         self.toggle()
         return "break"
 
     def toggle_all(self):
-        mods = self.lib.folder_mods()
+        mods = self.visible_mods()
         if not mods:
             return
         target = not all(self.is_on(m) for m in mods)
@@ -761,6 +877,24 @@ class MineTab(tk.Frame):
             self.app.show_error(str(err))
             return
         self.app.set_status(tr("play.started"))
+
+    def edit_note(self):
+        ids = self.selected_ids()
+        if len(ids) != 1:
+            return
+        e = self.lib.mods[ids[0]]
+        text = simpledialog.askstring(APP_TITLE, tr("mine.note_ask", name=e.name),
+                                      initialvalue=e.note, parent=self)
+        if text is None:
+            return
+        self.lib.set_note(e.mod_id, text)
+        self.refresh()
+        self.show_note()
+
+    def show_note(self, _event=None):
+        ids = self.selected_ids()
+        if len(ids) == 1 and ids[0] in self.lib.mods and self.lib.mods[ids[0]].note:
+            self.app.set_status(tr("mine.note_status", note=self.lib.mods[ids[0]].note))
 
     def rollback(self):
         ids = self.selected_ids()
@@ -1324,8 +1458,26 @@ class SettingsDialog(tk.Toplevel):
         ttk.Combobox(f, textvariable=self.refresh, state="readonly", width=16,
                      values=["30", "60", "120", "300"]).grid(row=8, column=0, sticky="w")
 
+        tk.Label(f, text=tr("settings.maintenance"), bg=BG, fg=ACCENT,
+                 font=(FONT, 11, "bold")).grid(row=9, column=0, sticky="w", pady=(16, 2))
+        self.auto_updates = tk.BooleanVar(value=cfg.auto_check_updates)
+        self.karl_updates = tk.BooleanVar(value=cfg.check_karl_updates)
+        for row, (var, key) in enumerate(((self.auto_updates, "settings.auto_updates"),
+                                          (self.karl_updates, "settings.karl_updates")), 10):
+            tk.Checkbutton(f, text=tr(key), variable=var, bg=BG, fg=FG, selectcolor=PANEL,
+                           activebackground=BG, activeforeground=FG, anchor="w").grid(
+                row=row, column=0, columnspan=2, sticky="w")
+        tools = ttk.Frame(f)
+        tools.grid(row=12, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Button(tools, text=tr("profile.export"),
+                   command=lambda: app.export_profile(self)).pack(side="left")
+        ttk.Button(tools, text=tr("profile.import"),
+                   command=lambda: app.import_profile(self)).pack(side="left", padx=(6, 0))
+        ttk.Button(tools, text=tr("cache.button"),
+                   command=lambda: CacheDialog(app)).pack(side="left", padx=(6, 0))
+
         ttk.Button(f, text=tr("settings.save"), style="Accent.TButton", command=self.save).grid(
-            row=9, column=1, sticky="e", pady=(16, 0))
+            row=13, column=1, sticky="e", pady=(16, 0))
 
     def _build_token_section(self):
         box = self.token_box
@@ -1446,6 +1598,8 @@ class SettingsDialog(tk.Toplevel):
         cfg.paks_dir = self.paks.get().strip()
         cfg.default_mode = MODE_LOCAL
         cfg.refresh_seconds = int(self.refresh.get() or 60)
+        cfg.auto_check_updates = bool(self.auto_updates.get())
+        cfg.check_karl_updates = bool(self.karl_updates.get())
         new_lang = self.language.key
         lang_changed = new_lang != (cfg.language or i18n.AUTO)
         cfg.save()
@@ -1453,6 +1607,64 @@ class SettingsDialog(tk.Toplevel):
         if lang_changed:
             app.change_language(new_lang)
         app.set_status(tr("status.settings_saved"))
+
+
+class CacheDialog(tk.Toplevel):
+    ROWS = (("mods", False), ("snapshots", False), ("unused", True), ("covers", True),
+            ("previous", True))
+
+    def __init__(self, app: App):
+        super().__init__(app)
+        self.app = app
+        self.title(tr("cache.title"))
+        self.configure(bg=BG)
+        self.resizable(False, False)
+        self.transient(app)
+        f = tk.Frame(self, bg=BG, padx=20, pady=16)
+        f.pack(fill="both", expand=True)
+        tk.Label(f, text=tr("cache.title"), bg=BG, fg=FG, font=(FONT, 14, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        self.report = app.lib.cache_report()
+        self.vars: dict[str, tk.BooleanVar] = {}
+        self.size_lbls: dict[str, tk.Label] = {}
+        for row, (key, cleanable) in enumerate(self.ROWS, 1):
+            if cleanable:
+                var = tk.BooleanVar(value=key != "previous")
+                self.vars[key] = var
+                tk.Checkbutton(f, text=tr(f"cache.{key}"), variable=var, bg=BG, fg=FG,
+                               selectcolor=PANEL, activebackground=BG, activeforeground=FG,
+                               anchor="w").grid(row=row, column=0, sticky="w")
+            else:
+                tk.Label(f, text=tr(f"cache.{key}"), bg=BG, fg=MUTED, anchor="w",
+                         padx=24).grid(row=row, column=0, sticky="w")
+            lbl = tk.Label(f, bg=BG, fg=FG, font=(FONT, 10, "bold"), anchor="e")
+            lbl.grid(row=row, column=1, sticky="e", padx=(24, 0))
+            self.size_lbls[key] = lbl
+        self.total = tk.Label(f, bg=BG, fg=MUTED, anchor="w")
+        self.total.grid(row=len(self.ROWS) + 1, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        btns = tk.Frame(f, bg=BG)
+        btns.grid(row=len(self.ROWS) + 2, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        ttk.Button(btns, text=tr("cache.close"), command=self.destroy).pack(side="right")
+        ttk.Button(btns, text=tr("cache.clean"), style="Accent.TButton",
+                   command=self.clean).pack(side="right", padx=(0, 8))
+        self._render()
+
+    def _render(self):
+        for key, lbl in self.size_lbls.items():
+            lbl.configure(text=human_size(self.report.get(key, 0)))
+        self.total.configure(text=tr("cache.total", size=human_size(sum(self.report.values()))))
+
+    def clean(self):
+        kinds = {k for k, v in self.vars.items() if v.get()}
+        if not kinds or self.app.busy:
+            return
+        if "previous" in kinds and not messagebox.askyesno(APP_TITLE, tr("cache.previous_confirm"),
+                                                            parent=self):
+            return
+        freed = self.app.lib.clean_cache(kinds)
+        self.report = self.app.lib.cache_report()
+        self._render()
+        self.app.set_status(tr("cache.done", size=human_size(freed)))
 
 
 def main():
