@@ -72,6 +72,9 @@ class Widget:
     def __getitem__(self, key):
         return self.kw.get(key)
 
+    def winfo_exists(self):
+        return not self.destroyed
+
     def winfo_children(self):
         return [c for c in self.children_ if not c.destroyed]
 

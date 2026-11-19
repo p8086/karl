@@ -245,6 +245,7 @@ Found a bug or have an idea? Open an issue on the **Issues** page of the reposit
 - your system (Windows or Linux, which distribution / Steam Deck) and Karl's version;
 - what you did, what you expected and what happened instead;
 - the error message or a screenshot, if any;
+- Karl's log file, `~/.cache/karl/karl.log` (on Windows `C:\Users\<you>\.cache\karl\karl.log`);
 - for blueprint mods that don't start: the UE4SS log, `FSD\Binaries\Win64\ue4ss\UE4SS.log` (the lines starting with `[Karl]` are the most useful).
 
 ## Credits

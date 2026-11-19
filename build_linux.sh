@@ -16,6 +16,7 @@ python3 -m venv .venv-build
 
 .venv-build/bin/python -m PyInstaller --noconfirm --clean --onefile --windowed \
   --name karl \
+  --hidden-import PIL.ImageTk --hidden-import PIL._imagingtk --hidden-import PIL._tkinter_finder \
   --add-data "karl/assets:karl/assets" \
   --add-data "karl/locales:karl/locales" \
   --add-data "karl/loader:karl/loader" \

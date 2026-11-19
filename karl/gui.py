@@ -25,6 +25,8 @@ from .library import (MODE_LOCAL, MODE_SUBSCRIBE, SOURCE_FILE, Config, Library,
                       extract_local_paths, find_paks_dir)
 from . import i18n
 from .i18n import tr
+from .log import log
+from . import log as karl_log
 from .modio import ModioClient, extract_mod_urls, mask_token, token_expiry
 from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CHIP, FG, FONT,
                     MUTED, ON_ACCENT, PANEL)
@@ -67,6 +69,8 @@ class App(tk.Tk):
         self.update_account()
         if self.config_.logged_in:
             self.browse.start()
+            if not (self.config_.username and self.config_.avatar_url and self.config_.profile_url):
+                self.submit(lambda: self.client().me(), self._refresh_me, lambda err: None)
         self.submit(self.lib.migrate_install_location,
                     lambda moved: (self.refresh_mine(), self.mine.install_pending())
                     if moved else None,
@@ -305,6 +309,18 @@ class App(tk.Tk):
 
     def client(self) -> ModioClient:
         return ModioClient(self.config_.token)
+
+    def _refresh_me(self, me: dict):
+        cfg = self.config_
+        cfg.username = me.get("username", cfg.username)
+        cfg.avatar_url = (me.get("avatar") or {}).get("thumb_50x50", cfg.avatar_url)
+        remember_me(cfg, me)
+        cfg.save()
+        self.update_account()
+
+    def report_callback_exception(self, exc, val, tb):
+        log.error("errore nell'interfaccia", exc_info=(exc, val, tb))
+        super().report_callback_exception(exc, val, tb)
 
     def update_account(self):
         for w in self.account_box.winfo_children():
@@ -1130,7 +1146,7 @@ class LoginDialog(tk.Toplevel):
         self.configure(bg=BG)
         self.resizable(False, False)
         self.transient(app)
-        self.grab_set()
+        safe_grab(self)
 
         f = tk.Frame(self, bg=BG, padx=22, pady=18)
         f.pack(fill="both", expand=True)
@@ -1186,6 +1202,16 @@ class LoginDialog(tk.Toplevel):
             self.msg.configure(text=text, fg="#e05a4f")
 
         self.app.submit(lambda: ModioClient(token).check_access(), ok, fail)
+
+
+def safe_grab(win: tk.Misc, tries: int = 20) -> None:
+    try:
+        if not win.winfo_exists():
+            return
+        win.grab_set()
+    except tk.TclError:
+        if tries > 0:
+            win.after(50, lambda: safe_grab(win, tries - 1))
 
 
 def remember_me(cfg: Config, me: dict) -> None:
@@ -1430,4 +1456,5 @@ class SettingsDialog(tk.Toplevel):
 
 
 def main():
+    karl_log.setup()
     App().mainloop()

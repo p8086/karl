@@ -4,6 +4,7 @@ python -m pip install -r requirements.txt pyinstaller || goto :errore
 
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name Karl ^
+  --hidden-import PIL.ImageTk --hidden-import PIL._imagingtk --hidden-import PIL._tkinter_finder ^
   --icon karl\assets\icon.ico ^
   --add-data "karl\assets;karl\assets" ^
   --add-data "karl\locales;karl\locales" ^

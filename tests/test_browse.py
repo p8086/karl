@@ -722,7 +722,7 @@ class TokenSettingsTests(GuiBase):
         pump(app, 80)
         dlg = gui.SettingsDialog(app)
         texts = lambda: [w.kw.get("text") for w in self._all(dlg.token_box)]
-        self.assertIn("Collegato come giuseppe8086", texts())
+        self.assertIn("Collegato come pe8086", texts())
         self.assertIn("Scadenza non indicata nel token", texts())
         self.assertNotEqual(dlg.token_text.kw["text"], FakeModio.valid_token)
         dlg._toggle_show()
@@ -1041,6 +1041,40 @@ class TimeMachineGuiTests(GuiBase):
         self.assertTrue(lib.mods[30].enabled)
         self.assertTrue(self.installed("mod-30").exists())
         self.assertIn(gui.format_when(tm.get(prima)["time"]), app.status.get())
+
+
+class LinuxWindowTests(GuiBase):
+    def test_grab_waits_until_visible(self):
+        Config().save()
+        app = gui.App()
+        pump(app)
+        calls = []
+
+        def grab(self_):
+            calls.append(1)
+            if len(calls) < 3:
+                raise fake_tk.TclError("grab failed: window not viewable")
+
+        fake_tk.Widget.grab_set = grab
+        self.addCleanup(lambda: delattr(fake_tk.Widget, "grab_set"))
+        fake_tk.after_queue.clear()
+        dlg = gui.LoginDialog(app)
+        self.assertTrue(hasattr(dlg, "token"))
+        self.assertEqual(len(calls), 1)
+        while fake_tk.after_queue:
+            fn, args = fake_tk.after_queue.pop(0)
+            if fn:
+                fn(*args)
+        self.assertEqual(len(calls), 3)
+
+    def test_profile_filled_after_cli_token(self):
+        Config(token=FakeModio.valid_token).save()
+        app = gui.App()
+        pump(app, 80)
+        cfg = Config.load()
+        self.assertEqual(cfg.username, "pe8086")
+        self.assertEqual(cfg.profile_url, "https://mod.io/u/giuseppe8086")
+        self.assertTrue(cfg.avatar_url)
 
 
 if __name__ == "__main__":

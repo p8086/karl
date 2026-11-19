@@ -17,11 +17,14 @@ from .modio import fetch_bytes
 from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CARD, CHIP, FG,
                     FONT, MUTED, ON_ACCENT, PANEL)
 
+from .log import log
+
 try:
     from PIL import Image, ImageTk
     HAVE_PIL = True
-except ImportError:
+except ImportError as _pil_error:
     HAVE_PIL = False
+    log.warning("Pillow non disponibile, solo copertine PNG: %s", _pil_error)
 
 if TYPE_CHECKING:
     from .gui import App
@@ -198,7 +201,8 @@ class ThumbCache:
         try:
             data = fut.result()
             img = self._to_photo(data, key[1])
-        except Exception:
+        except Exception as e:
+            log.warning("immagine non caricata %s: %s", key[0], e)
             return
         self.images[key] = img
         for cb in callbacks:

@@ -40,6 +40,7 @@ jobs:
         run: >
           python -m PyInstaller --noconfirm --clean --onefile --windowed
           --name Karl --icon karl\assets\icon.ico
+          --hidden-import PIL.ImageTk --hidden-import PIL._imagingtk --hidden-import PIL._tkinter_finder
           --add-data "karl\assets;karl\assets"
           --add-data "karl\locales;karl\locales"
           --add-data "karl\loader;karl\loader"
@@ -55,17 +56,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Python con Tkinter
-        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv
+        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv xvfb
       - name: karl
         run: |
           python3 -m venv .venv
           .venv/bin/pip install -r requirements.txt pyinstaller
           .venv/bin/python -m PyInstaller --noconfirm --clean --onefile --windowed \
             --name karl \
+            --hidden-import PIL.ImageTk --hidden-import PIL._imagingtk --hidden-import PIL._tkinter_finder \
             --add-data "karl/assets:karl/assets" \
             --add-data "karl/locales:karl/locales" \
             --add-data "karl/loader:karl/loader" \
             main.py
+      - name: Copertine nell'eseguibile
+        run: xvfb-run -a dist/karl --check-imagetk
       - name: Pacchetto
         run: |
           mkdir -p pkg/karl

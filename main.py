@@ -20,8 +20,25 @@ def fix_certificates() -> None:
                 return
 
 
+def check_imagetk() -> int:
+    try:
+        import tkinter as tk
+        from PIL import Image, ImageTk
+        root = tk.Tk()
+        photo = ImageTk.PhotoImage(Image.new("RGBA", (8, 8), (224, 169, 58, 255)))
+        ok = photo.width() == 8
+        root.destroy()
+    except Exception as e:
+        print(f"ImageTk non disponibile: {e}")
+        return 1
+    print("ImageTk ok" if ok else "ImageTk non funziona")
+    return 0 if ok else 1
+
+
 def run() -> int:
     fix_certificates()
+    if sys.argv[1:] == ["--check-imagetk"]:
+        return check_imagetk()
     if len(sys.argv) > 1:
         from karl.cli import main
         return main(sys.argv[1:])
