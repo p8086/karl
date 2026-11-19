@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Karl" width="200">
+  <img src="docs/karl01.png" alt="Karl" width="200">
 </p>
 
 **Karl** is a mod manager for **Deep Rock Galactic**, written from scratch in Python. Karl installs the mods itself, with no mod.io subscriptions and without going through the game's mod system. In the Browse tab you search DRG mods with the same filters as the website and copy their link; in the My mods tab you paste the links and Karl installs them.
