@@ -215,9 +215,13 @@ class Tests(unittest.TestCase):
         self.assertEqual(pak.read_bytes(), b"PAK1.0")
 
         FakeClient.version = {"file_id": 2, "v": "2.0"}
+        r = lib.update_all()
+        self.assertEqual(r["updated"], [])
+        self.assertEqual(pak.read_bytes(), b"PAK1.0")
+        self.assertEqual(lib.find_updates()["updates"], ["Test Mod"])
         mine.write_bytes(b"v2")
         os.utime(mine, (mine.stat().st_atime, mine.stat().st_mtime + 60))
-        r = lib.update_all()
+        r = lib.update_all(install_updates=True)
         self.assertEqual(sorted(r["updated"]), ["MiaMod", "Test Mod"])
         self.assertEqual(pak.read_bytes(), b"PAK2.0")
         self.assertEqual(fpak.read_bytes(), b"v2")
@@ -232,13 +236,13 @@ class Tests(unittest.TestCase):
         mine.unlink()
         shutil.rmtree(library.CACHE_DIR / str(f.mod_id))
         FakeClient.version = {"file_id": 3, "v": "3.0"}
-        r = lib.update_all()
+        r = lib.update_all(check=True)
         self.assertEqual([n for n, _ in r["failed"]], ["MiaMod"])
         self.assertEqual(r["updated"], ["Test Mod"])
 
         mine.write_bytes(b"v4")
         lib.config.token = ""
-        r = lib.update_all()
+        r = lib.update_all(check=True)
         self.assertEqual([n for n, _ in r["failed"]], ["Test Mod"])
         self.assertEqual(r["updated"], ["MiaMod"])
         lib.config.token = "t"
@@ -324,7 +328,8 @@ class Tests(unittest.TestCase):
 
         FakeClient.version = {"file_id": 2, "v": "2.0"}
         lib.set_enabled(f.mod_id, False)
-        lib.update_all()
+        lib.find_updates()
+        lib.update_all(install_updates=True)
         self.assertEqual(len(tm.snapshots), 2)
         (snap, ch), _ = tm.listing()[0], None
         self.assertEqual((ch["versions"], ch["toggled"], ch["added"]), (1, 1, 0))
@@ -422,11 +427,37 @@ class Tests(unittest.TestCase):
         with self.assertRaises(library.ModioError):
             other.read_profile(bad)
 
+    def test_no_network_when_switching(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        calls = []
+        orig = FakeClient.get_mod_by_id
+        FakeClient.get_mod_by_id = lambda self, g, m: calls.append(m) or orig(self, g, m)
+        self.addCleanup(setattr, FakeClient, "get_mod_by_id", orig)
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        other = lib.create_folder("Altra")
+        lib.switch_folder(other)
+        lib.update_all()
+        lib.switch_folder(next(n for n in lib.folders if n != other))
+        lib.update_all()
+        self.assertEqual(calls, [])
+        self.assertEqual(lib.mods[e.mod_id].version, "1.0")
+        self.assertEqual(lib.find_updates(ids=[])["updates"], [])
+        self.assertEqual(calls, [])
+        self.assertEqual(lib.find_updates(ids=[e.mod_id])["updates"], ["Test Mod"])
+        self.assertEqual(calls, [e.mod_id])
+        lib.update_all()
+        self.assertEqual(lib.mods[e.mod_id].version, "1.0")
+        lib.apply({})
+        self.assertEqual(lib.mods[e.mod_id].version, "2.0")
+        self.assertEqual(lib.mods[e.mod_id].latest_version, "")
+
     def test_cache_cleanup(self):
         lib = self.lib
         e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
         FakeClient.version = {"file_id": 2, "v": "2.0"}
-        lib.update_all()
+        lib.find_updates()
+        lib.update_all(install_updates=True)
         self.assertTrue(lib.has_previous(e.mod_id))
         orphan = library.CACHE_DIR / "999" / "paks"
         orphan.mkdir(parents=True)
@@ -467,7 +498,8 @@ class Tests(unittest.TestCase):
         pak = self.inst("test-mod")
         self.assertFalse(lib.has_previous(e.mod_id))
         FakeClient.version = {"file_id": 2, "v": "2.0"}
-        lib.update_all()
+        lib.find_updates()
+        lib.update_all(install_updates=True)
         self.assertEqual(pak.read_bytes(), b"PAK2.0")
         self.assertTrue(lib.has_previous(e.mod_id))
         lib.rollback(e.mod_id)

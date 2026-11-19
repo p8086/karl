@@ -400,9 +400,14 @@ class App(tk.Tk):
             self.browse.refresh_cards_state()
 
     def auto_check_updates(self):
-        if not self.config_.auto_check_updates or self.busy or not self.lib.folder_mods():
+        if not self.config_.auto_check_updates or self.busy or not self.lib.mods:
             return
-        self.mine.check_updates()
+
+        def work():
+            report = self.lib.find_updates(progress=self.on_progress, log=self.log)
+            self.post(self.mine._after_check, report)
+
+        self.run(tr("mine.checking_updates"), work)
 
     def check_karl_update(self, fetch=None):
         cfg = self.config_
@@ -1107,7 +1112,8 @@ class MineTab(tk.Frame):
         app = self.app
 
         def work():
-            report = self.lib.find_updates(progress=app.on_progress, log=app.log)
+            ids = [m.mod_id for m in self.lib.folder_mods()]
+            report = self.lib.find_updates(progress=app.on_progress, log=app.log, ids=ids)
             app.post(self._after_check, report)
 
         app.run(tr("mine.checking_updates"), work)

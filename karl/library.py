@@ -897,7 +897,8 @@ class Library:
         log(tr("lib.removed", name=e.name))
 
     def update_all(self, progress: Optional[Callable[[int, int], None]] = None,
-                   log: Callable[[str], None] = lambda s: None) -> dict:
+                   log: Callable[[str], None] = lambda s: None,
+                   check: bool = False, install_updates: bool = False) -> dict:
         report: dict = {"updated": [], "installed": [], "ok": 0, "failed": [], "sub_ids": None}
         self.convert_to_local()
         client = self.client if self.config.token else None
@@ -906,7 +907,7 @@ class Library:
         for n, e in enumerate(entries, 1):
             log(tr("lib.update_step", i=n, n=len(entries), name=e.name))
             try:
-                result = self._update_entry(e, client, progress)
+                result = self._update_entry(e, client, progress, check, install_updates)
             except Exception as err:
                 report["failed"].append((e.name, str(err)))
                 continue
@@ -927,7 +928,8 @@ class Library:
         return report
 
     def _update_entry(self, e: ModEntry, client: Optional[ModioClient],
-                      progress: Optional[Callable[[int, int], None]]) -> Optional[str]:
+                      progress: Optional[Callable[[int, int], None]],
+                      check: bool = False, install_updates: bool = False) -> Optional[str]:
         result: Optional[str] = None
         cache_ok = bool(e.cached_paks) and all(Path(p).is_file() for p in e.cached_paks)
 
@@ -940,18 +942,13 @@ class Library:
             elif not cache_ok:
                 raise ModioError(tr("err.file_missing", path=src))
         elif e.mode == MODE_LOCAL:
-            if client is None:
-                raise ModioError(tr("err.no_token"), status=401)
-            mod = client.get_mod_by_id(e.game_id, e.mod_id)
-            new_id = (mod.get("modfile") or {}).get("id")
-            e.name = mod.get("name") or e.name
-            e.approval = approval_of(mod) or e.approval
-            is_new = e.file_id is not None and new_id != e.file_id and not e.hold
-            if is_new or not cache_ok or e.file_id is None:
-                self._download(e, mod, progress)
-                result = "updated" if is_new else "installed"
+            wanted_update = install_updates and bool(e.latest_version) and not e.hold
+            if check or wanted_update or not cache_ok or e.file_id is None:
+                if client is None:
+                    raise ModioError(tr("err.no_token"), status=401)
+                result = self._fetch_entry(e, client, progress, cache_ok)
         else:
-            if client is not None and e.enabled:
+            if client is not None and e.enabled and check:
                 mod = client.get_mod_by_id(e.game_id, e.mod_id)
                 mf = mod.get("modfile") or {}
                 if mf.get("id") != e.file_id:
@@ -969,11 +966,26 @@ class Library:
             self._remove_from_game(e)
         return result
 
+    def _fetch_entry(self, e: ModEntry, client: ModioClient,
+                     progress: Optional[Callable[[int, int], None]], cache_ok: bool) -> Optional[str]:
+        mod = client.get_mod_by_id(e.game_id, e.mod_id)
+        new_id = (mod.get("modfile") or {}).get("id")
+        e.name = mod.get("name") or e.name
+        e.approval = approval_of(mod) or e.approval
+        is_new = e.file_id is not None and new_id != e.file_id and not e.hold
+        if is_new or not cache_ok or e.file_id is None:
+            self._download(e, mod, progress)
+            e.latest_version = ""
+            return "updated" if is_new else "installed"
+        return None
+
     def find_updates(self, progress: Optional[Callable[[int, int], None]] = None,
-                     log: Callable[[str], None] = lambda s: None) -> dict:
+                     log: Callable[[str], None] = lambda s: None,
+                     ids: Optional[list[int]] = None) -> dict:
         report: dict = {"updates": [], "failed": []}
         client = self.client if self.config.token else None
-        entries = sorted(self.mods.values(), key=lambda m: m.name.lower())
+        pool = [self.mods[i] for i in ids if i in self.mods] if ids is not None else self.mods.values()
+        entries = sorted(pool, key=lambda m: m.name.lower())
         for n, e in enumerate(entries, 1):
             log(tr("lib.update_step", i=n, n=len(entries), name=e.name))
             if progress:
@@ -1010,7 +1022,7 @@ class Library:
         for mid, on in wanted.items():
             if mid in self.mods:
                 self.mods[mid].enabled = on
-        report = self.update_all(progress=progress, log=log)
+        report = self.update_all(progress=progress, log=log, install_updates=True)
         failed = {name for name, _ in report["failed"]}
         for e in self.mods.values():
             if e.name not in failed:
@@ -1020,7 +1032,7 @@ class Library:
 
     def check_updates(self, progress: Optional[Callable[[int, int], None]] = None,
                       log: Callable[[str], None] = lambda s: None) -> list[str]:
-        return self.update_all(progress=progress, log=log)["updated"]
+        return self.update_all(progress=progress, log=log, check=True)["updated"]
 
     def sync_subscriptions(self, subscribed: list[dict]) -> bool:
         changed = False

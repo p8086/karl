@@ -95,7 +95,7 @@ Here are the mods installed by Karl. Next to each name there is a **switch**: on
 
 Switches **don't change the game right away**. Above the list there are two buttons:
 
-- **🔄 Check for updates**: looks for new versions without downloading anything. Mods with an update show their version as `1.0 → 1.1`.
+- **🔄 Check for updates**: looks on mod.io for new versions of the mods in the active folder, without downloading anything. Mods with an update show their version as `1.0 → 1.1`. Karl never checks on its own when you switch folder, press Play or save: only with this button, or at startup if you turn it on in Settings.
 - **💾 Install and save**: saves the switches, downloads the updates and puts only the enabled mods in the game (removing the disabled ones). The number in brackets is how many changes are still unsaved. If you close Karl with unsaved changes, it asks first.
 
 The counters under the list show how many mods are installed, pending and waiting for an update.
@@ -123,7 +123,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Disk space.** **Settings → Disk space…** shows how much space mods in use, time machine snapshots, files no longer used, downloaded covers and previous versions take, and frees what you select. Deleting previous versions means **Previous version** won't work until the mods update again.
 
-**Automatic checks.** In **Settings → Maintenance** you can have Karl check for mod updates at every startup, and get a notice when a new version of Karl is released on GitHub (you can skip a version you don't want).
+**Automatic checks.** In **Settings → Maintenance** you can have Karl check for updates of all your mods, in every folder, at every startup, and get a notice when a new version of Karl is released on GitHub (you can skip a version you don't want).
 
 **Developer mode** (for modders). With the box ticked, every 2 seconds Karl checks the date of the .pak files of mods you added from a file: when you rebuild one, it reimports it and puts it back in the game by itself. While DRG is running the pak is in use: Karl waits until you close the game or, if you also ticked **Restart DRG when a mod changes**, closes DRG, updates the mod and starts it again.
 
@@ -174,7 +174,7 @@ Two things to keep in mind:
 
 **Install and save** fixes the whole library, one mod at a time:
 
-- downloads new versions of the mods taken from mod.io;
+- downloads the updates found by **Check for updates** (or by the startup check);
 - reimports mods added from a .pak/.zip file if the original file changed;
 - reinstalls into the game folder the enabled mods whose pak disappeared (for example after Steam's "verify game files") and removes those of disabled mods.
 

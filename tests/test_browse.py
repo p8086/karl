@@ -543,6 +543,9 @@ class NewFeaturesTests(GuiBase):
         old_ver = lib.mods[30].version
         mod["modfile"] = dict(orig, id=orig["id"] + 500, version="9.9")
         lib.update_all()
+        self.assertEqual(lib.mods[30].version, old_ver)
+        lib.find_updates()
+        lib.update_all(install_updates=True)
         self.assertEqual(lib.mods[30].version, "9.9")
         mine.rollback()
         pump(app, 80)
@@ -1138,11 +1141,15 @@ class QualityTests(GuiBase):
         self.assertIn("Liberati", app.status.get())
 
         calls = []
-        saved = mine.check_updates
-        mine.check_updates = lambda: calls.append(1)
-        self.addCleanup(setattr, mine, "check_updates", saved)
+        saved = lib.find_updates
+        lib.find_updates = lambda **k: calls.append(k.get("ids")) or {"updates": [], "failed": []}
+        self.addCleanup(setattr, lib, "find_updates", saved)
         app.auto_check_updates()
-        self.assertEqual(calls, [1])
+        pump(app)
+        self.assertEqual(calls, [None])
+        mine.check_updates()
+        pump(app)
+        self.assertEqual(calls[1], [m.mod_id for m in lib.folder_mods()])
 
         opened = []
         saved_open = gui.webbrowser.open
