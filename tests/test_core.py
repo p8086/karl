@@ -1,0 +1,522 @@
+import io
+import os
+import sys
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+TMP = Path(tempfile.mkdtemp())
+os.environ["XDG_CONFIG_HOME"] = str(TMP / "config")
+os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from karl import library
+from karl.library import MODE_LOCAL, MODE_SUBSCRIBE, Config, Library
+from karl.modio import parse_mod_url
+
+
+def make_zip(files: dict) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+class FakeClient:
+    version = {"file_id": 1, "v": "1.0"}
+    subs: set = set()
+
+    def __init__(self, token):
+        self.token = token
+
+    def _mod(self):
+        v = FakeClient.version
+        return {"id": 42, "game_id": 2475, "name": "Test Mod", "name_id": "test-mod",
+                "modfile": {"id": v["file_id"], "version": v["v"], "filename": "test.zip",
+                            "download": {"binary_url": "https://x/test.zip"}}}
+
+    def get_mod(self, game, slug):
+        return self._mod()
+
+    def get_mod_by_id(self, g, m):
+        return self._mod()
+
+    def subscribed_mods(self, g):
+        return [self._mod()] if 42 in FakeClient.subs else []
+
+    def subscribe(self, g, m):
+        FakeClient.subs.add(m)
+
+    def unsubscribe(self, g, m):
+        FakeClient.subs.discard(m)
+
+    def download(self, url, dest, progress=None):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        data = make_zip({"cartella/../../evil/Test.pak": b"PAK" + FakeClient.version["v"].encode(),
+                         "readme.txt": b"ciao"})
+        dest.write_bytes(data)
+        if progress:
+            progress(len(data), len(data))
+        return dest
+
+
+class Tests(unittest.TestCase):
+    def inst(self, slug):
+        found = sorted(self.paks.glob(f"FSD-WindowsNoEditor_karl_{slug}_*_P.pak"))
+        return found[0] if found else self.paks / f"FSD-WindowsNoEditor_karl_{slug}_0_P.pak"
+
+    def setUp(self):
+        self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
+        self.paks.mkdir(parents=True)
+        self.mods = self.paks.parent.parent / "Mods"
+        (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
+        self.cfg = Config(token="t", paks_dir=str(self.paks))
+        for f in (library.LIBRARY_FILE, library.FOLDERS_FILE, library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        FakeClient.version = {"file_id": 1, "v": "1.0"}
+        FakeClient.subs = set()
+        self.lib = Library(self.cfg, client_factory=FakeClient)
+
+    def test_parse_url(self):
+        self.assertEqual(parse_mod_url("https://mod.io/g/drg/m/sandbox-utilities#description"),
+                         ("drg", "sandbox-utilities"))
+        self.assertEqual(parse_mod_url("  https://www.mod.io/g/DRG/m/peHUD/  "), ("drg", "pehud"))
+        with self.assertRaises(ValueError):
+            parse_mod_url("https://example.com/mod.pak")
+
+    def test_local_install_toggle_remove(self):
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        pak = self.inst("test-mod")
+        self.assertTrue(pak.exists())
+        self.assertEqual(pak.read_bytes(), b"PAK1.0")
+        self.assertFalse((TMP / "evil").exists())
+        self.lib.set_enabled(e.mod_id, False)
+        self.assertFalse(pak.exists())
+        self.lib.set_enabled(e.mod_id, True)
+        self.assertTrue(pak.exists())
+        self.assertIn(42, Library(self.cfg, client_factory=FakeClient).mods)
+        self.lib.remove(e.mod_id)
+        self.assertFalse(pak.exists())
+        self.assertEqual(self.lib.mods, {})
+        self.assertTrue((self.paks / "FSD-WindowsNoEditor.pak").exists())
+
+    def test_update_local(self):
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertEqual(self.lib.check_updates(), [])
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        self.assertEqual(self.lib.check_updates(), ["Test Mod"])
+        self.assertEqual((self.inst("test-mod")).read_bytes(), b"PAK2.0")
+        self.assertEqual(self.lib.mods[42].version, "2.0")
+
+    def test_never_subscribes(self):
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_SUBSCRIBE)
+        self.assertEqual(e.mode, MODE_LOCAL)
+        self.assertEqual(FakeClient.subs, set())
+        self.assertTrue((self.inst("test-mod")).exists())
+        self.assertFalse(self.mods.exists())
+        self.lib.set_enabled(e.mod_id, False)
+        self.lib.set_enabled(e.mod_id, True)
+        self.lib.remove(e.mod_id)
+        self.assertEqual(FakeClient.subs, set())
+
+    def test_migrate_legacy(self):
+        import json, shutil
+        shutil.rmtree(library.CONFIG_DIR, ignore_errors=True)
+        shutil.rmtree(library.CACHE_DIR, ignore_errors=True)
+        old_cfg = library.CONFIG_DIR.parent / "drgmm"
+        old_cache = library.CACHE_DIR.parent / "drgmm"
+        (old_cache / "42" / "paks").mkdir(parents=True)
+        (old_cache / "42" / "paks" / "Test.pak").write_bytes(b"PAK1.0")
+        old_cfg.mkdir(parents=True)
+        (old_cfg / "config.json").write_text(json.dumps({"token": "vecchio", "paks_dir": str(self.paks)}))
+        (self.paks / "drgmm_test-mod_P.pak").write_bytes(b"PAK1.0")
+        (old_cfg / "mods.json").write_text(json.dumps([{
+            "mod_id": 42, "game_id": 2475, "name": "Test Mod", "slug": "test-mod",
+            "url": "u", "mode": MODE_LOCAL, "file_id": 1, "version": "1.0",
+            "cached_paks": [str(old_cache / "42" / "paks" / "Test.pak")],
+            "installed_paks": ["drgmm_test-mod_P.pak"]}]))
+        cfg = Config.load()
+        self.assertEqual(cfg.token, "vecchio")
+        lib = Library(cfg, client_factory=FakeClient)
+        self.assertTrue(Path(lib.mods[42].cached_paks[0]).exists())
+        lib.set_enabled(42, False)
+        self.assertFalse((self.paks / "drgmm_test-mod_P.pak").exists())
+        lib.set_enabled(42, True)
+        self.assertTrue((self.inst("test-mod")).exists())
+        shutil.rmtree(old_cfg)
+        shutil.rmtree(old_cache)
+
+    def test_local_file(self):
+        src = Path(tempfile.mkdtemp())
+        pak = src / "peHUD_P.pak"
+        pak.write_bytes(b"PAK-v1")
+        e = self.lib.add_local_file(str(pak))
+        self.assertLess(e.mod_id, 0)
+        self.assertEqual(e.name, "peHUD")
+        self.assertEqual(e.source, library.SOURCE_FILE)
+        installed = self.inst("file-pehud")
+        self.assertEqual(installed.read_bytes(), b"PAK-v1")
+        pak.write_bytes(b"PAK-v2")
+        e2 = self.lib.add_local_file(str(pak))
+        self.assertEqual(e2.mod_id, e.mod_id)
+        self.assertEqual(len([m for m in self.lib.mods.values() if m.source == "file"]), 1)
+        self.assertEqual(installed.read_bytes(), b"PAK-v2")
+        z = src / "pacchetto.zip"
+        z.write_bytes(make_zip({"a/Uno.pak": b"1", "Due.pak": b"2", "leggimi.txt": b"x"}))
+        e3 = self.lib.add_local_file(str(z))
+        self.assertNotEqual(e3.mod_id, e.mod_id)
+        self.assertEqual(len(e3.installed_paks), 2)
+        self.lib.set_enabled(e.mod_id, False)
+        self.assertFalse(installed.exists())
+        self.lib.set_enabled(e.mod_id, True)
+        self.assertTrue(installed.exists())
+        self.assertEqual(self.lib.check_updates(), [])
+        self.assertIn(e.mod_id, Library(self.cfg, client_factory=FakeClient).mods)
+        self.lib.remove(e.mod_id)
+        self.assertFalse(installed.exists())
+        with self.assertRaises(library.ModioError):
+            self.lib.add_local_file(str(src / "non-esiste.pak"))
+        paths, rest = library.extract_local_paths(
+            f'"{pak}"\nhttps://mod.io/g/drg/m/x\n{pak}\n{src / "no.pak"}')
+        self.assertEqual(paths, [str(pak.resolve())])
+        self.assertEqual(rest, ["https://mod.io/g/drg/m/x", str(src / "no.pak")])
+
+    def test_update_all(self):
+        import shutil
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        pak = self.inst("test-mod")
+        src = Path(tempfile.mkdtemp())
+        mine = src / "MiaMod.pak"
+        mine.write_bytes(b"v1")
+        f = lib.add_local_file(str(mine))
+        fpak = self.inst("file-miamod")
+
+        r = lib.update_all()
+        self.assertEqual((r["updated"], r["installed"], r["ok"], r["failed"]), ([], [], 2, []))
+
+        pak.unlink()
+        fpak.unlink()
+        r = lib.update_all()
+        self.assertEqual(sorted(r["installed"]), ["MiaMod", "Test Mod"])
+        self.assertTrue(pak.exists() and fpak.exists())
+
+        shutil.rmtree(library.CACHE_DIR / str(e.mod_id))
+        pak.unlink()
+        r = lib.update_all()
+        self.assertIn("Test Mod", r["installed"])
+        self.assertEqual(pak.read_bytes(), b"PAK1.0")
+
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        mine.write_bytes(b"v2")
+        os.utime(mine, (mine.stat().st_atime, mine.stat().st_mtime + 60))
+        r = lib.update_all()
+        self.assertEqual(sorted(r["updated"]), ["MiaMod", "Test Mod"])
+        self.assertEqual(pak.read_bytes(), b"PAK2.0")
+        self.assertEqual(fpak.read_bytes(), b"v2")
+
+        lib.set_enabled(e.mod_id, False)
+        pak.write_bytes(b"rimesso a mano")
+        lib.mods[e.mod_id].installed_paks = [pak.name]
+        lib.update_all()
+        self.assertFalse(pak.exists())
+        lib.set_enabled(e.mod_id, True)
+
+        mine.unlink()
+        shutil.rmtree(library.CACHE_DIR / str(f.mod_id))
+        FakeClient.version = {"file_id": 3, "v": "3.0"}
+        r = lib.update_all()
+        self.assertEqual([n for n, _ in r["failed"]], ["MiaMod"])
+        self.assertEqual(r["updated"], ["Test Mod"])
+
+        mine.write_bytes(b"v4")
+        lib.config.token = ""
+        r = lib.update_all()
+        self.assertEqual([n for n, _ in r["failed"]], ["Test Mod"])
+        self.assertEqual(r["updated"], ["MiaMod"])
+        lib.config.token = "t"
+
+    def test_migrate_to_paks(self):
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        new = self.inst("test-mod")
+        self.lib._remove_from_game(e)
+        old = self.mods / "karl_test-mod" / "karl_test-mod.pak"
+        old.parent.mkdir(parents=True)
+        old.write_bytes(b"PAK1.0")
+        e.installed_paks = ["karl_test-mod/karl_test-mod.pak"]
+        self.lib.mods[7] = library.ModEntry(7, 2475, "Iscritta", "iscritta", "", MODE_SUBSCRIBE)
+        self.assertEqual(self.lib.migrate_install_location(), 2)
+        self.assertFalse(old.exists() or old.parent.exists())
+        self.assertEqual(new.read_bytes(), b"PAK1.0")
+        self.assertEqual(self.lib.mods[7].mode, MODE_LOCAL)
+        self.assertEqual(self.lib.needs_install(), [7])
+        self.assertEqual(self.lib.migrate_install_location(), 0)
+        self.assertTrue((self.paks / "FSD-WindowsNoEditor.pak").exists())
+
+    def test_folders(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        src = self.paks.parent / "src"
+        src.mkdir()
+        (src / "MiaHUD.pak").write_bytes(b"HUD")
+        f = lib.add_local_file(str(src / "MiaHUD.pak"))
+        first = lib.active_folder
+        self.assertEqual({m.mod_id for m in lib.folder_mods()}, {e.mod_id, f.mod_id})
+        pak_e = self.inst("test-mod")
+        pak_f = self.inst("file-miahud")
+
+        lib.create_folder("Solo HUD")
+        with self.assertRaises(Exception):
+            lib.create_folder("solo hud")
+        lib.switch_folder("Solo HUD")
+        lib.update_all()
+        self.assertEqual(lib.folder_mods(), [])
+        self.assertFalse(pak_e.exists() or pak_f.exists())
+
+        lib.add_local_file(str(src / "MiaHUD.pak"))
+        self.assertEqual([m.mod_id for m in lib.folder_mods()], [f.mod_id])
+        self.assertTrue(self.inst("file-miahud").exists())
+        self.assertFalse(pak_e.exists())
+
+        lib.switch_folder(first)
+        lib.update_all()
+        self.assertTrue(pak_e.exists() and pak_f.exists())
+
+        lib.set_enabled(f.mod_id, False)
+        self.assertFalse(lib.folders[first][f.mod_id])
+        self.assertTrue(lib.folders["Solo HUD"][f.mod_id])
+
+        lib.remove(f.mod_id)
+        self.assertIn(f.mod_id, lib.mods)
+        self.assertNotIn(f.mod_id, lib.folders[first])
+
+        again = Library(Config(paks_dir=str(self.paks)))
+        self.assertEqual(set(again.folders), {first, "Solo HUD"})
+        self.assertEqual(again.active_folder, first)
+
+        lib.rename_folder("Solo HUD", "HUD")
+        self.assertIn("HUD", lib.folders)
+        lib.delete_folder("HUD")
+        self.assertNotIn(f.mod_id, lib.mods)
+        with self.assertRaises(Exception):
+            lib.delete_folder(first)
+
+    def test_time_machine(self):
+        lib = self.lib
+        tm = lib.time_machine
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        src = self.paks.parent / "tm"
+        src.mkdir()
+        (src / "Hud.pak").write_bytes(b"hud")
+        f = lib.add_local_file(str(src / "Hud.pak"))
+        lib.update_all()
+        self.assertEqual(len(tm.snapshots), 1)
+        lib.update_all()
+        self.assertEqual(len(tm.snapshots), 1)
+        ieri = tm.snapshots[-1]["id"]
+
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        lib.set_enabled(f.mod_id, False)
+        lib.update_all()
+        self.assertEqual(len(tm.snapshots), 2)
+        (snap, ch), _ = tm.listing()[0], None
+        self.assertEqual((ch["versions"], ch["toggled"], ch["added"]), (1, 1, 0))
+        lib.remove(e.mod_id)
+        self.assertNotIn(e.mod_id, lib.mods)
+
+        missing = tm.restore(ieri)
+        lib.update_all()
+        self.assertEqual(missing, [])
+        self.assertIn(e.mod_id, lib.mods)
+        self.assertEqual(lib.mods[e.mod_id].version, "1.0")
+        self.assertTrue(lib.mods[e.mod_id].hold)
+        self.assertEqual(self.inst("test-mod").read_bytes(), b"PAK1.0")
+        self.assertTrue(lib.mods[f.mod_id].enabled)
+        self.assertTrue(self.inst("file-hud").exists())
+        blobs = list(library.SNAPSHOT_BLOBS.glob("*.pak"))
+        self.assertEqual(len(blobs), 3)
+        again = Library(Config(paks_dir=str(self.paks)), client_factory=FakeClient)
+        self.assertEqual(len(again.time_machine.snapshots), len(tm.snapshots))
+
+    def test_time_machine_limit_per_folder(self):
+        from karl import timemachine
+        lib, tm = self.lib, self.lib.time_machine
+        old = timemachine.MAX_SNAPSHOTS
+        timemachine.MAX_SNAPSHOTS = 3
+        self.addCleanup(setattr, timemachine, "MAX_SNAPSHOTS", old)
+        src = self.paks.parent / "lim"
+        src.mkdir()
+        (src / "A.pak").write_bytes(b"a")
+        a = lib.add_local_file(str(src / "A.pak"))
+        lib.update_all()
+        main = lib.active_folder
+        lib.create_folder("Altra")
+        lib.switch_folder("Altra")
+        lib.update_all()
+        lib.switch_folder(main)
+        for i in range(5):
+            lib.set_enabled(a.mod_id, i % 2 == 1)
+            lib.update_all()
+        per = lambda f: sum(1 for s in tm.snapshots if s["folder"] == f)
+        self.assertEqual(per(main), 3)
+        self.assertEqual(per("Altra"), 1)
+        lib.rename_folder("Altra", "Nuovo nome")
+        self.assertEqual(per("Nuovo nome"), 1)
+        self.assertEqual(per("Altra"), 0)
+
+    def test_rollback(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        pak = self.inst("test-mod")
+        self.assertFalse(lib.has_previous(e.mod_id))
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        lib.update_all()
+        self.assertEqual(pak.read_bytes(), b"PAK2.0")
+        self.assertTrue(lib.has_previous(e.mod_id))
+        lib.rollback(e.mod_id)
+        self.assertEqual(pak.read_bytes(), b"PAK1.0")
+        self.assertEqual((e.version, e.hold), ("1.0", True))
+        lib.update_all()
+        self.assertEqual(pak.read_bytes(), b"PAK1.0")
+        self.assertEqual(lib.find_updates()["updates"], [])
+        lib.rollback(e.mod_id)
+        self.assertEqual(pak.read_bytes(), b"PAK2.0")
+        self.assertEqual((e.version, e.hold), ("2.0", False))
+
+    def test_dev_reimport(self):
+        import os, time
+        src = self.paks.parent / "dev"
+        src.mkdir()
+        f = src / "MiaHUD.pak"
+        f.write_bytes(b"v1")
+        e = self.lib.add_local_file(str(f))
+        self.assertEqual(self.lib.changed_files(), [])
+        f.write_bytes(b"v2")
+        os.utime(f, (time.time() + 5, time.time() + 5))
+        self.assertEqual([m.mod_id for m in self.lib.changed_files()], [e.mod_id])
+        self.assertEqual(self.lib.reimport_changed(), ["MiaHUD"])
+        self.assertEqual((self.inst("file-miahud")).read_bytes(), b"v2")
+        self.assertTrue(self.lib.has_previous(e.mod_id))
+        self.assertEqual(self.lib.changed_files(), [])
+
+    def test_share_folder(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        src = self.paks.parent / "share"
+        src.mkdir()
+        (src / "Mia.pak").write_bytes(b"x")
+        lib.add_local_file(str(src / "Mia.pak"))
+        lib.set_enabled(e.mod_id, False)
+        code, skipped = lib.export_folder()
+        self.assertTrue(code.startswith("KARL1:"))
+        self.assertEqual(skipped, 1)
+        data = Library.parse_share_code("  " + code[:20] + "\n" + code[20:] + " ")
+        self.assertEqual(data["mods"], [(2475, 42, "test-mod", False)])
+        with self.assertRaises(Exception):
+            Library.parse_share_code("KARL1:non-valido")
+        import shutil
+        shutil.rmtree(library.CONFIG_DIR, ignore_errors=True)
+        friend = Library(Config(token="t", paks_dir=str(self.paks)), client_factory=FakeClient)
+        self.assertEqual(friend.mods, {})
+        name, failed = friend.import_folder(code)
+        self.assertEqual(failed, [])
+        self.assertEqual(friend.active_folder, name)
+        self.assertIn(42, friend.mods)
+        self.assertFalse(friend.mods[42].enabled)
+        self.assertEqual(friend.folders[name], {42: False})
+        name2, _ = friend.import_folder(code)
+        self.assertNotEqual(name, name2)
+
+    def test_rename_old_paks(self):
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        current = self.inst("test-mod")
+        for old_name in ("karl_test-mod_P.pak", "FSD-karl_test-mod_P.pak"):
+            old = self.paks / old_name
+            self.inst("test-mod").rename(old)
+            e.installed_paks = [old_name]
+            self.assertGreater(self.lib.fix_installed_paks(), 0)
+            self.assertFalse(old.exists())
+            self.lib.update_all()
+            self.assertEqual(self.inst("test-mod"), current)
+            self.assertTrue(current.exists())
+        self.assertIn("fsd-windowsnoeditor", current.name.lower())
+        self.assertNotEqual(current.name.lower(), "fsd-windowsnoeditor.pak")
+        self.lib.remove(e.mod_id)
+        self.assertEqual([p.name for p in self.paks.glob("*karl_*")], [])
+
+    def test_load_order(self):
+        lib = self.lib
+        a = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        src = self.paks.parent / "ord"
+        src.mkdir()
+        (src / "B.pak").write_bytes(b"b")
+        b = lib.add_local_file(str(src / "B.pak"))
+        self.assertGreater(lib.priority(a.mod_id), lib.priority(b.mod_id))
+        pa, pb = self.inst("test-mod"), self.inst("file-b")
+        lib.set_order([b.mod_id, a.mod_id])
+        self.assertGreater(lib.priority(b.mod_id), lib.priority(a.mod_id))
+        self.assertTrue(lib.needs_reorder(a) and lib.needs_reorder(b))
+        lib.update_all()
+        self.assertFalse(pa.exists() or pb.exists())
+        na, nb = self.inst("test-mod"), self.inst("file-b")
+        prio = lambda path: int(path.name.rsplit("_", 2)[1])
+        self.assertGreater(prio(nb), prio(na))
+        self.assertFalse(lib.needs_reorder(a) or lib.needs_reorder(b))
+
+    def test_adopt_local_mods(self):
+        local = self.mods / "MiaHUD"
+        local.mkdir(parents=True)
+        (local / "MiaHUD.pak").write_bytes(b"PAKLOCAL")
+        (self.mods / "README.txt").write_text("leggimi")
+        (self.mods / "Vuota").mkdir()
+        self.assertEqual([d.name for d in self.lib.local_game_mods()], ["MiaHUD"])
+        self.assertEqual(self.lib.adopt_local_mods(), ["MiaHUD"])
+        self.assertEqual(self.lib.local_game_mods(), [])
+        backup = self.paks.parent.parent / Library.LOCAL_BACKUP / "MiaHUD" / "MiaHUD.pak"
+        self.assertEqual(backup.read_bytes(), b"PAKLOCAL")
+        self.assertTrue((self.inst("file-miahud")).exists())
+        e = next(m for m in self.lib.mods.values() if m.name == "MiaHUD")
+        self.assertEqual(Path(e.file_path), backup.resolve())
+
+    def test_approval_and_unsubscribe(self):
+        self.assertEqual(library.approval_of({"tags": [{"name": "1.39"}, {"name": "Sandbox"}]}),
+                         "Sandbox")
+        self.assertEqual(library.approval_of({}), "")
+        FakeClient.subs = {42}
+        subs = [{"id": 42, "game_id": 2475, "name": "Test Mod", "name_id": "test-mod",
+                 "tags": [{"name": "Approved"}]}]
+        self.assertEqual(self.lib.unsubscribe_all(subs), 1)
+        self.assertEqual(FakeClient.subs, set())
+        self.assertEqual(self.lib.mods[42].approval, "Approved")
+        self.assertEqual(self.lib.not_verified(), ["Test Mod"])
+        self.assertEqual(self.lib.needs_install(), [42])
+
+    def test_foreign_loader(self):
+        fsd = self.paks.parent.parent
+        (fsd / "Binaries" / "Win64").mkdir(parents=True)
+        hook = fsd / "Binaries" / "Win64" / "x3daudio1_7.dll"
+        hook.write_bytes(b"hook")
+        bundle = self.paks / "FSD-WindowsNoEditor_Mods.pak"
+        bundle.write_bytes(b"bundle")
+        ue4ss = fsd / "Binaries" / "Win64" / "dwmapi.dll"
+        ue4ss.write_bytes(b"ue4ss")
+        self.assertEqual(sorted(p.name for p in self.lib.foreign_loader_files()),
+                         ["FSD-WindowsNoEditor_Mods.pak", "x3daudio1_7.dll"])
+        backup = self.lib.disable_foreign_loader()
+        self.assertFalse(hook.exists() or bundle.exists())
+        self.assertEqual((backup / "Binaries" / "Win64" / "x3daudio1_7.dll").read_bytes(), b"hook")
+        self.assertEqual((backup / "Content" / "Paks" / "FSD-WindowsNoEditor_Mods.pak").read_bytes(),
+                         b"bundle")
+        self.assertTrue(ue4ss.exists())
+        self.assertTrue((self.paks / "FSD-WindowsNoEditor.pak").exists())
+        self.assertEqual(self.lib.foreign_loader_files(), [])
+        hook.write_bytes(b"hook2")
+        self.lib.disable_foreign_loader()
+        self.assertEqual(len(list((backup / "Binaries" / "Win64").glob("x3daudio1_7*.dll"))), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,8 @@
+*.pyc
+*.spec
+.venv-build/
+__pycache__/
+_to_delete/
+build/
+dist/
+docs/logo_originale.png
