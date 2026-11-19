@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import tempfile
+import types
 import time
 import unittest
 from pathlib import Path
@@ -209,7 +210,9 @@ class GuiBase(unittest.TestCase):
         library.ModioClient = FakeModio
         Library.__init__.__defaults__ = (FakeModio,)
         browse.fetch_bytes = lambda url, timeout=20: png_bytes()
-        browse.ImageTk.PhotoImage = lambda im: ("foto", im.size)
+        browse.Image = Image
+        browse.ImageTk = types.SimpleNamespace(PhotoImage=lambda im: ("foto", im.size))
+        browse.HAVE_PIL = True
         fake_tk.sys.modules["tkinter.messagebox"].messages.clear()
         fake_tk.Widget.clipboard = None
         self.paks = Path(tempfile.mkdtemp()) / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
