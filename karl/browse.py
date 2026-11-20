@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Callable, Optional
 from . import i18n
 from .i18n import months, tr
 from .library import CACHE_DIR, MODE_LOCAL, MODE_SUBSCRIBE
-from .modio import fetch_bytes
+from .modio import fetch_bytes, mod_name
+from .ui import px
 from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CARD, CHIP, FG,
                     FONT, MUTED, ON_ACCENT, PANEL)
 
@@ -34,6 +35,14 @@ PAGE_SIZE = 24
 CARD_W = 290
 IMG_W, IMG_H = CARD_W, 163
 GAP = 8
+
+
+def apply_scale() -> None:
+    global CARD_W, IMG_W, IMG_H, GAP
+    from .ui import px
+    CARD_W = px(290)
+    IMG_W, IMG_H = CARD_W, px(163)
+    GAP = px(8)
 
 
 SORTS = {
@@ -331,7 +340,7 @@ class ModCard(tk.Frame):
         body = tk.Frame(self, bg=CARD, padx=12, pady=10)
         body.pack(fill="both", expand=True)
 
-        title = tk.Label(body, text=shorten(mod.get("name", ""), 34), bg=CARD, fg=FG,
+        title = tk.Label(body, text=shorten(mod_name(mod), 34), bg=CARD, fg=FG,
                          font=(FONT, 12, "bold"), anchor="w", cursor="hand2")
         title.pack(fill="x")
         title.bind("<Button-1>", open_page)
@@ -344,7 +353,7 @@ class ModCard(tk.Frame):
                  font=(FONT, 9)).pack(side="right")
 
         tk.Label(body, text=shorten(mod.get("summary", ""), 120), bg=CARD, fg=FG,
-                 font=(FONT, 9), wraplength=CARD_W - 26, justify="left", anchor="nw",
+                 font=(FONT, 9), wraplength=CARD_W - px(26), justify="left", anchor="nw",
                  height=3).pack(fill="x")
 
         tags = [t.get("name") for t in mod.get("tags", []) if t.get("name")]
@@ -551,7 +560,7 @@ class BrowseTab(tk.Frame):
         self.body = tk.Frame(self, bg=BG)
         self.body.pack(fill="both", expand=True, padx=16, pady=(0, 12))
 
-        left = tk.Frame(self.body, bg=PANEL, width=270)
+        left = tk.Frame(self.body, bg=PANEL, width=px(270))
         left.pack(side="left", fill="y")
         left.pack_propagate(False)
         lhead = tk.Frame(left, bg=PANEL, padx=14, pady=8)
@@ -590,7 +599,7 @@ class BrowseTab(tk.Frame):
         box = tk.Frame(self.overlay, bg=BG)
         box.place(relx=0.5, rely=0.4, anchor="center")
         tk.Label(box, text=title, bg=BG, fg=FG, font=(FONT, 16, "bold")).pack()
-        tk.Label(box, text=text, bg=BG, fg=MUTED, font=(FONT, 10), wraplength=480,
+        tk.Label(box, text=text, bg=BG, fg=MUTED, font=(FONT, 10), wraplength=px(480),
                  justify="center").pack(pady=(6, 14))
         if button:
             flat_button(box, button[0], button[1], primary=True).pack()

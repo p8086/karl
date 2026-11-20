@@ -166,7 +166,6 @@
   "mine.converting": "Karl installa {n} mod...",
   "loader.found": "Ho trovato i file di un altro mod loader ancora attivi nella cartella del gioco:\n{files}\n\nInterferiscono con le mod installate da Karl.\nSpostarli in un backup? Non viene cancellato nulla (fallo a gioco chiuso).",
   "loader.moved": "File dell'altro mod loader spostati in {path}",
-  "warn.not_verified": "Queste mod non sono Verified:\n{mods}\n\nCon Karl il gioco non le segnala: gli altri giocatori in lobby non vedono che la partita è moddata e le mod Sandbox scrivono sul tuo salvataggio normale. Usale in partite private o con amici avvisati.",
   "mine.check": "🔄 Controlla aggiornamenti",
   "mine.apply": "💾 Installa e salva",
   "mine.apply_n": "💾 Installa e salva ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Vota questa mod su mod.io",
   "vote.saved": "Voto inviato a mod.io.",
   "vote.removed": "Voto tolto.",
-  "vote.failed": "Impossibile inviare il voto: {msg}"
+  "vote.failed": "Impossibile inviare il voto: {msg}",
+  "settings.install": "Installazione del gioco",
+  "install.add": "Aggiungi…",
+  "install.rename": "Rinomina…",
+  "install.remove": "Rimuovi",
+  "install.ask_name": "Nome di questa installazione (es. Steam, Beta, scheda SD dello Steam Deck):",
+  "install.cant_remove": "Non puoi rimuovere l'installazione attiva né quella principale.",
+  "install.confirm_remove": "Rimuovere \"{name}\" da Karl? Karl cancella le sue cartelle, l'ordine di caricamento e le mod scaricate per quell'installazione. Le mod già nella cartella del gioco restano lì.",
+  "install.duplicate": "Due installazioni usano la stessa cartella Paks: dai a ognuna la sua cartella.",
+  "install.active": "Installazione attiva: {name}",
+  "install.vanilla_busy": "Aspetta che DRG si chiuda e che le mod tornino al loro posto prima di cambiare installazione.",
+  "settings.ui_scale": "Dimensione dell'interfaccia",
+  "scale.restart": "La nuova dimensione si applica al riavvio di Karl. Riavviare adesso?"
 }

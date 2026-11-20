@@ -296,8 +296,15 @@ def game_versions_of(mod: dict) -> list[str]:
                    if VERSION_TAG_RE.match(t.get("name", ""))}, key=version_key)
 
 
+def mod_name(mod: dict) -> str:
+    import html
+    return html.unescape(str(mod.get("name") or "")).strip()
+
+
 def dependency_info(dep: dict) -> dict:
     mid = int(dep.get("mod_id") or dep.get("id"))
     slug = dep.get("name_id") or ""
     url = dep.get("profile_url") or (f"https://mod.io/g/drg/m/{slug}" if slug else "")
-    return {"id": mid, "name": dep.get("name") or slug or str(mid), "url": url}
+    import html
+    name = html.unescape(str(dep.get("name") or "")).strip()
+    return {"id": mid, "name": name or slug or str(mid), "url": url}

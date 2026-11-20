@@ -166,7 +166,6 @@
   "err.not_paks": "{path} no parece la carpeta FSD\\Content\\Paks de Deep Rock Galactic: revisa los Ajustes.",
   "loader.found": "Hay archivos de otro gestor de mods activos en la carpeta del juego:\n{files}\n\nInterfieren con los mods instalados por Karl.\n¿Moverlos a una copia de seguridad? No se borra nada (hazlo con el juego cerrado).",
   "loader.moved": "Archivos del otro gestor de mods movidos a {path}",
-  "warn.not_verified": "Estos mods no son Verified:\n{mods}\n\nCon Karl el juego no los señala: los demás jugadores del lobby no ven que la partida tiene mods y los mods Sandbox escriben en tu partida guardada normal. Úsalos en partidas privadas o con amigos avisados.",
   "mine.check": "🔄 Buscar actualizaciones",
   "mine.apply": "💾 Instalar y guardar",
   "mine.apply_n": "💾 Instalar y guardar ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Vota este mod en mod.io",
   "vote.saved": "Voto enviado a mod.io.",
   "vote.removed": "Voto quitado.",
-  "vote.failed": "No se pudo enviar el voto: {msg}"
+  "vote.failed": "No se pudo enviar el voto: {msg}",
+  "settings.install": "Instalación del juego",
+  "install.add": "Añadir…",
+  "install.rename": "Renombrar…",
+  "install.remove": "Quitar",
+  "install.ask_name": "Nombre de esta instalación (p. ej. Steam, Beta, tarjeta SD de Steam Deck):",
+  "install.cant_remove": "No puedes quitar la instalación activa ni la principal.",
+  "install.confirm_remove": "¿Quitar \"{name}\" de Karl? Karl borra sus carpetas, el orden de carga y los mods descargados para ella. Los mods que ya están en esa carpeta del juego se quedan allí.",
+  "install.duplicate": "Dos instalaciones usan la misma carpeta Paks: da a cada una su propia carpeta.",
+  "install.active": "Instalación activa: {name}",
+  "install.vanilla_busy": "Espera a que DRG se cierre y los mods vuelvan antes de cambiar de instalación.",
+  "settings.ui_scale": "Tamaño de la interfaz",
+  "scale.restart": "El nuevo tamaño se aplica al reiniciar Karl. ¿Reiniciar ahora?"
 }

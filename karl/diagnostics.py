@@ -44,7 +44,11 @@ def run(lib: "Library", network: bool = True) -> list[tuple[str, str]]:
 
     add(INFO, f"Karl {VERSION} ({'exe' if getattr(sys, 'frozen', False) else 'source'})")
     add(INFO, f"System: {platform.platform()} · Python {platform.python_version()}")
-    add(INFO, f"Language: {cfg.language} · Date: {datetime.now():%Y-%m-%d %H:%M}")
+    add(INFO, f"Language: {cfg.language} · Interface size: {int(cfg.ui_scale * 100)}% · "
+              f"Date: {datetime.now():%Y-%m-%d %H:%M}")
+    if len(cfg.installs) > 1:
+        names = ", ".join(i.get("name", "?") for i in cfg.installs)
+        add(INFO, f"Installations: {names} · active: {cfg.current_install().get('name')}")
 
     paks = None
     if not cfg.paks_dir:
@@ -118,6 +122,12 @@ def run(lib: "Library", network: bool = True) -> list[tuple[str, str]]:
         add(level, f"Blueprint mod support (UE4SS + Karl loader): {st}")
         if proton.needed():
             pfx = proton.prefix_for(paks)
+            ue = integration.ue4ss_dir(integration.win64_dir(paks))
+            if ue is not None:
+                ini = ue / "UE4SS-settings.ini"
+                add(WARN if integration.proton_hooks_on(ini) else OK,
+                    "Proton: UE4SS hooks " + ("ON (DRG can crash at startup)"
+                                              if integration.proton_hooks_on(ini) else "off"))
             if pfx is None:
                 add(WARN, "Proton: prefix not found (start DRG once with Steam)")
             else:

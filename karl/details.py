@@ -9,7 +9,8 @@ from tkinter import ttk
 from typing import TYPE_CHECKING, Optional
 
 from .i18n import tr
-from .modio import dependency_info, game_versions_of
+from .modio import dependency_info, game_versions_of, mod_name
+from .ui import px
 from .theme import ACCENT, BG, BORDER, FG, FONT, MUTED, PANEL
 
 if TYPE_CHECKING:
@@ -93,15 +94,15 @@ class ModDetails(tk.Toplevel):
         self.files: list[dict] = []
         self.deps: Optional[list[dict]] = None
         self.photos: list = []
-        self.title(tr("details.title", name=self.mod.get("name") or name or mod_id))
+        self.title(tr("details.title", name=mod_name(self.mod) or name or mod_id))
         self.configure(bg=BG)
-        self.geometry("820x760")
-        self.minsize(640, 520)
+        self.geometry(f"{px(820)}x{px(760)}")
+        self.minsize(px(640), px(520))
         self.transient(app)
 
         top = tk.Frame(self, bg=BG, padx=16, pady=14)
         top.pack(fill="x")
-        holder = tk.Frame(top, width=IMG_W, height=IMG_H, bg="#0d0c0b")
+        holder = tk.Frame(top, width=px(IMG_W), height=px(IMG_H), bg="#0d0c0b")
         holder.pack_propagate(False)
         holder.pack(side="left")
         self.img = tk.Label(holder, bg="#0d0c0b", fg=MUTED, text="Deep Rock Galactic",
@@ -110,20 +111,20 @@ class ModDetails(tk.Toplevel):
         info = tk.Frame(top, bg=BG, padx=16)
         info.pack(side="left", fill="both", expand=True)
         self.name_lbl = tk.Label(info, bg=BG, fg=FG, font=(FONT, 15, "bold"), anchor="w",
-                                 justify="left", wraplength=420,
-                                 text=self.mod.get("name") or name)
+                                 justify="left", wraplength=px(420),
+                                 text=mod_name(self.mod) or name)
         self.name_lbl.pack(fill="x")
         self.meta_lbl = tk.Label(info, bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
-                                 justify="left", wraplength=420)
+                                 justify="left", wraplength=px(420))
         self.meta_lbl.pack(fill="x", pady=(4, 0))
         self.stats_lbl = tk.Label(info, bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
-                                  justify="left", wraplength=420)
+                                  justify="left", wraplength=px(420))
         self.stats_lbl.pack(fill="x", pady=(4, 0))
         self.versions_lbl = tk.Label(info, bg=BG, fg=FG, font=(FONT, 9), anchor="w",
-                                     justify="left", wraplength=420)
+                                     justify="left", wraplength=px(420))
         self.versions_lbl.pack(fill="x", pady=(8, 0))
         self.state_lbl = tk.Label(info, bg=BG, fg=ACCENT, font=(FONT, 9, "bold"), anchor="w",
-                                  justify="left", wraplength=420)
+                                  justify="left", wraplength=px(420))
         self.state_lbl.pack(fill="x", pady=(4, 0))
         votes = tk.Frame(info, bg=BG)
         votes.pack(fill="x", pady=(8, 0))
@@ -217,7 +218,7 @@ class ModDetails(tk.Toplevel):
     def render(self):
         from .browse import human_count, human_date, human_size
         m = self.mod
-        name = m.get("name") or self.name_lbl.cget("text") or str(self.mod_id)
+        name = mod_name(m) or self.name_lbl.cget("text") or str(self.mod_id)
         self.title(tr("details.title", name=name))
         self.name_lbl.configure(text=name)
         author = (m.get("submitted_by") or {}).get("username", "")
@@ -243,7 +244,7 @@ class ModDetails(tk.Toplevel):
         url = logo.get("thumb_640x360") or logo.get("thumb_320x180") or logo.get("original", "")
         thumbs = getattr(getattr(self.app, "browse", None), "thumbs", None)
         if url and thumbs is not None:
-            thumbs.get(url, (IMG_W, IMG_H), lambda im: self._set_img(self.img, im))
+            thumbs.get(url, (px(IMG_W), px(IMG_H)), lambda im: self._set_img(self.img, im))
         self._render_gallery(thumbs)
         desc = html_to_text(m.get("description") or "") or m.get("summary") or ""
         if m.get("id") or desc:
@@ -328,13 +329,13 @@ class ModDetails(tk.Toplevel):
                 lbl.bind("<Button-1>", lambda _e, u=original: webbrowser.open(u))
             src = img.get("thumb_320x180") or original
             if src:
-                thumbs.get(src, (THUMB_W, THUMB_H),
+                thumbs.get(src, (px(THUMB_W), px(THUMB_H)),
                            lambda im, w=lbl: self._set_img_sized(w, im))
 
     def _set_img_sized(self, label, im):
         if self.winfo_exists():
             self.photos.append(im)
-            label.configure(image=im, text="", width=THUMB_W, height=THUMB_H)
+            label.configure(image=im, text="", width=px(THUMB_W), height=px(THUMB_H))
 
     def _render_files(self):
         from .browse import human_date, human_size

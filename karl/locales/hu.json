@@ -166,7 +166,6 @@
   "err.not_paks": "{path} nem tűnik a Deep Rock Galactic FSD\\Content\\Paks mappájának: ellenőrizd a beállításokat.",
   "loader.found": "A játék mappájában még aktívak egy másik modkezelő fájljai:\n{files}\n\nZavarják a Karl által telepített modokat.\nÁthelyezed őket biztonsági mentésbe? Semmi sem törlődik (bezárt játéknál).",
   "loader.moved": "A másik modkezelő fájljai áthelyezve ide: {path}",
-  "warn.not_verified": "Ezek a modok nem Verified kategóriásak:\n{mods}\n\nKarllal a játék nem jelzi őket: a lobby többi játékosa nem látja, hogy a játék moddolt, a Sandbox modok pedig a normál mentésedbe írnak. Privát játékban vagy beavatott barátokkal használd őket.",
   "mine.check": "🔄 Frissítések keresése",
   "mine.apply": "💾 Telepítés és mentés",
   "mine.apply_n": "💾 Telepítés és mentés ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Értékeld ezt a modot a mod.io-n",
   "vote.saved": "Szavazat elküldve a mod.io-nak.",
   "vote.removed": "Szavazat törölve.",
-  "vote.failed": "Nem sikerült elküldeni a szavazatot: {msg}"
+  "vote.failed": "Nem sikerült elküldeni a szavazatot: {msg}",
+  "settings.install": "Játéktelepítés",
+  "install.add": "Hozzáadás…",
+  "install.rename": "Átnevezés…",
+  "install.remove": "Eltávolítás",
+  "install.ask_name": "A telepítés neve (pl. Steam, Béta, Steam Deck SD-kártya):",
+  "install.cant_remove": "Az aktív és a fő telepítés nem távolítható el.",
+  "install.confirm_remove": "Eltávolítod a(z) \"{name}\" telepítést a Karlból? A Karl törli a hozzá tartozó mappákat, betöltési sorrendet és letöltött modokat. A játék mappájában már lévő modok ott maradnak.",
+  "install.duplicate": "Két telepítés ugyanazt a Paks mappát használja: adj mindegyiknek saját mappát.",
+  "install.active": "Aktív telepítés: {name}",
+  "install.vanilla_busy": "Várd meg, amíg a DRG bezárul és a modok visszakerülnek, mielőtt telepítést váltasz.",
+  "settings.ui_scale": "Felület mérete",
+  "scale.restart": "Az új méret a Karl újraindításakor lép életbe. Újraindítod most?"
 }

@@ -166,7 +166,6 @@
   "err.not_paks": "{path}, Deep Rock Galactic'in FSD\\Content\\Paks klasörü gibi görünmüyor: Ayarları kontrol et.",
   "loader.found": "Oyun klasöründe başka bir mod yükleyicinin dosyaları hâlâ etkin:\n{files}\n\nKarl'ın kurduğu modlarla çakışıyorlar.\nYedeğe taşınsın mı? Hiçbir şey silinmez (oyun kapalıyken yap).",
   "loader.moved": "Diğer mod yükleyicinin dosyaları {path} konumuna taşındı",
-  "warn.not_verified": "Bu modlar Verified değil:\n{mods}\n\nKarl ile oyun onları işaretlemez: lobideki diğer oyuncular oyunun modlu olduğunu görmez ve Sandbox modları normal kayıt dosyana yazar. Onları özel oyunlarda ya da haberdar olan arkadaşlarınla kullan.",
   "mine.check": "🔄 Güncellemeleri denetle",
   "mine.apply": "💾 Kur ve kaydet",
   "mine.apply_n": "💾 Kur ve kaydet ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Bu modu mod.io'da oyla",
   "vote.saved": "Oy mod.io'ya gönderildi.",
   "vote.removed": "Oy kaldırıldı.",
-  "vote.failed": "Oy gönderilemedi: {msg}"
+  "vote.failed": "Oy gönderilemedi: {msg}",
+  "settings.install": "Oyun kurulumu",
+  "install.add": "Ekle…",
+  "install.rename": "Yeniden adlandır…",
+  "install.remove": "Kaldır",
+  "install.ask_name": "Bu kurulumun adı (ör. Steam, Beta, Steam Deck SD kart):",
+  "install.cant_remove": "Etkin kurulumu ya da ana kurulumu kaldıramazsın.",
+  "install.confirm_remove": "\"{name}\" Karl'dan kaldırılsın mı? Karl bu kuruluma ait klasörleri, yükleme sırasını ve indirilen modları siler. Oyun klasöründeki modlar orada kalır.",
+  "install.duplicate": "İki kurulum aynı Paks klasörünü kullanıyor: her birine ayrı klasör ver.",
+  "install.active": "Etkin kurulum: {name}",
+  "install.vanilla_busy": "Kurulum değiştirmeden önce DRG'nin kapanmasını ve modların geri gelmesini bekle.",
+  "settings.ui_scale": "Arayüz boyutu",
+  "scale.restart": "Yeni boyut Karl yeniden başlatılınca uygulanır. Şimdi yeniden başlatılsın mı?"
 }

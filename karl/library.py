@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import json
 import os
 import re
@@ -18,7 +19,7 @@ from . import APP_NAME
 from .i18n import tr
 from . import game, integration, pakfile, proton
 from .modio import (KNOWN_GAMES, DEFAULT_GAME, ModioClient, ModioError, dependency_info,
-                    game_versions_of, modfile_info, parse_mod_url, version_key)
+                    game_versions_of, mod_name, modfile_info, parse_mod_url, version_key)
 from .pakfile import PakError, hide_asset_registry, init_classes
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_NAME
@@ -28,6 +29,25 @@ LIBRARY_FILE = CONFIG_DIR / "mods.json"
 FOLDERS_FILE = CONFIG_DIR / "cartelle.json"
 SNAPSHOTS_FILE = CONFIG_DIR / "istantanee.json"
 SNAPSHOT_BLOBS = CACHE_DIR / "istantanee"
+MODS_CACHE = CACHE_DIR
+MAIN_INSTALL = "main"
+
+
+def install_dirs(install_id: str) -> tuple[Path, Path]:
+    if not install_id or install_id == MAIN_INSTALL:
+        return CONFIG_DIR, CACHE_DIR
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", install_id)
+    return CONFIG_DIR / "installs" / safe, CACHE_DIR / "installs" / safe
+
+
+def use_install(install_id: str) -> None:
+    global LIBRARY_FILE, FOLDERS_FILE, SNAPSHOTS_FILE, SNAPSHOT_BLOBS, MODS_CACHE
+    cfg_dir, cache_dir = install_dirs(install_id)
+    LIBRARY_FILE = cfg_dir / "mods.json"
+    FOLDERS_FILE = cfg_dir / "cartelle.json"
+    SNAPSHOTS_FILE = cfg_dir / "istantanee.json"
+    SNAPSHOT_BLOBS = cache_dir / "istantanee"
+    MODS_CACHE = cache_dir
 
 PAK_PREFIX = "karl_"
 LEGACY_NAME = "drgmm"
@@ -112,6 +132,9 @@ class Config:
     close_to_tray: bool = False
     game_build: str = ""
     compact_links: bool = False
+    ui_scale: float = 1.0
+    installs: list = field(default_factory=list)
+    active_install: str = MAIN_INSTALL
 
     @property
     def logged_in(self) -> bool:
@@ -126,9 +149,10 @@ class Config:
             for k, v in data.items():
                 if hasattr(cfg, k):
                     setattr(cfg, k, v)
-        if not cfg.paks_dir:
+        if not cfg.paks_dir and cfg.active_install == MAIN_INSTALL:
             found = find_paks_dir()
             cfg.paks_dir = str(found) if found else ""
+        cfg.ensure_installs()
         if not cfg.install_v2:
             cfg.default_mode = MODE_LOCAL
             cfg.install_v2 = True
@@ -137,9 +161,57 @@ class Config:
         return cfg
 
     def save(self) -> None:
+        self.ensure_installs()
+        self.store_active()
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2))
         os.chmod(CONFIG_FILE, 0o600)
+
+    def ensure_installs(self) -> None:
+        self.installs = [dict(i) for i in self.installs if isinstance(i, dict) and i.get("id")]
+        if not any(i["id"] == MAIN_INSTALL for i in self.installs):
+            main = {"id": MAIN_INSTALL, "name": "Deep Rock Galactic", "paks_dir": "",
+                    "game_build": ""}
+            if self.active_install in ("", MAIN_INSTALL):
+                main.update(paks_dir=self.paks_dir, game_build=self.game_build)
+            self.installs.insert(0, main)
+        if not any(i["id"] == self.active_install for i in self.installs):
+            self.active_install = MAIN_INSTALL
+            main = self.install(MAIN_INSTALL)
+            self.paks_dir, self.game_build = main["paks_dir"], main.get("game_build", "")
+
+    def install(self, install_id: str) -> dict:
+        for i in self.installs:
+            if i["id"] == install_id:
+                return i
+        raise KeyError(install_id)
+
+    def current_install(self) -> dict:
+        self.ensure_installs()
+        return self.install(self.active_install)
+
+    def store_active(self) -> None:
+        cur = next((i for i in self.installs if i["id"] == self.active_install), None)
+        if cur is not None:
+            cur["paks_dir"] = self.paks_dir
+            cur["game_build"] = self.game_build
+
+    def activate(self, install_id: str) -> None:
+        self.ensure_installs()
+        self.store_active()
+        target = self.install(install_id)
+        self.active_install = install_id
+        self.paks_dir = target.get("paks_dir", "")
+        self.game_build = target.get("game_build", "")
+        self.save()
+
+    def add_install(self, name: str, paks_dir: str = "") -> str:
+        import uuid
+        self.ensure_installs()
+        install_id = uuid.uuid4().hex[:10]
+        self.installs.append({"id": install_id, "name": name.strip() or install_id,
+                              "paks_dir": paks_dir, "game_build": ""})
+        return install_id
 
 
 def steam_roots() -> list[Path]:
@@ -224,6 +296,7 @@ class Library:
     def __init__(self, config: Config, client_factory: Callable[[str], ModioClient] = ModioClient):
         self.config = config
         self.client_factory = client_factory
+        use_install(getattr(config, "active_install", MAIN_INSTALL))
         self.mods: dict[int, ModEntry] = {}
         self.folders: dict[str, dict[int, bool]] = {}
         self.active_folder: str = ""
@@ -235,6 +308,7 @@ class Library:
         if LIBRARY_FILE.exists():
             for raw in json.loads(LIBRARY_FILE.read_text()):
                 e = ModEntry(**raw)
+                e.name = html.unescape(e.name)
                 self.mods[e.mod_id] = e
         self._load_folders()
 
@@ -272,7 +346,7 @@ class Library:
                 del f[i]
 
     def _save_folders(self) -> None:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        FOLDERS_FILE.parent.mkdir(parents=True, exist_ok=True)
         FOLDERS_FILE.write_text(json.dumps({
             "versione": 2,
             "attiva": self.active_folder,
@@ -334,7 +408,7 @@ class Library:
         for i in [i for i in gone if i not in others and i in self.mods]:
             e = self.mods.pop(i)
             self._remove_from_game(e)
-            shutil.rmtree(CACHE_DIR / str(i), ignore_errors=True)
+            shutil.rmtree(MODS_CACHE / str(i), ignore_errors=True)
         if self.active_folder == name:
             new = next(iter(self.folders))
             self.active_folder = new
@@ -356,7 +430,7 @@ class Library:
             pass
 
     def _save_list(self) -> None:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        LIBRARY_FILE.parent.mkdir(parents=True, exist_ok=True)
         LIBRARY_FILE.write_text(json.dumps([asdict(m) for m in self.mods.values()], indent=2))
 
     @property
@@ -537,7 +611,7 @@ class Library:
     def _download(self, entry: ModEntry, mod: dict,
                   progress: Optional[Callable[[int, int], None]]) -> None:
         info = modfile_info(mod)
-        mod_cache = CACHE_DIR / str(entry.mod_id)
+        mod_cache = MODS_CACHE / str(entry.mod_id)
         if entry.file_id is not None and info["file_id"] != entry.file_id:
             self._keep_previous(entry)
         archive = self.client.download(info["url"], mod_cache / "download" / info["filename"],
@@ -574,7 +648,7 @@ class Library:
                 return old
             self.remove(mod_id, log=log)  
 
-        entry = ModEntry(mod_id=mod_id, game_id=game_id, name=mod.get("name", slug),
+        entry = ModEntry(mod_id=mod_id, game_id=game_id, name=mod_name(mod) or slug,
                          slug=slug, url=mod.get("profile_url") or "", mode=mode,
                          approval=approval_of(mod), added_at=time.time())
         self._remember_meta(entry, mod, self.client)
@@ -621,7 +695,7 @@ class Library:
     def _import_file(self, entry: ModEntry, src: Path) -> None:
         if entry.cached_paks and src.is_file() and src.stat().st_mtime != entry.file_mtime:
             self._keep_previous(entry)
-        paks = self.extract_paks(src, CACHE_DIR / str(entry.mod_id) / "paks")
+        paks = self.extract_paks(src, MODS_CACHE / str(entry.mod_id) / "paks")
         entry.cached_paks = [str(p) for p in paks]
         entry.file_path = str(src.resolve())
         entry.file_mtime = src.stat().st_mtime
@@ -631,7 +705,7 @@ class Library:
     def _keep_previous(self, entry: ModEntry) -> None:
         if not entry.cached_paks or not all(Path(p).is_file() for p in entry.cached_paks):
             return
-        mod_cache = CACHE_DIR / str(entry.mod_id)
+        mod_cache = MODS_CACHE / str(entry.mod_id)
         prev = mod_cache / "prev"
         shutil.rmtree(prev, ignore_errors=True)
         prev.mkdir(parents=True)
@@ -652,7 +726,7 @@ class Library:
         if not self.has_previous(mod_id):
             raise ModioError(tr("rollback.none"))
         e = self.mods[mod_id]
-        mod_cache = CACHE_DIR / str(mod_id)
+        mod_cache = MODS_CACHE / str(mod_id)
         cur_dir, prev_dir, tmp = mod_cache / "paks", mod_cache / "prev", mod_cache / "swap"
         shutil.rmtree(tmp, ignore_errors=True)
         cur_dir.rename(tmp)
@@ -943,8 +1017,8 @@ class Library:
         used_dirs = {Path(p).parent for e in self.mods.values() for p in e.cached_paks}
         prev_dirs = {Path(p).parent for e in self.mods.values() for p in e.prev_paks} - used_dirs
         unused: list[Path] = []
-        if CACHE_DIR.is_dir():
-            for d in CACHE_DIR.iterdir():
+        if MODS_CACHE.is_dir():
+            for d in MODS_CACHE.iterdir():
                 if d.is_dir() and d.name.isdigit():
                     if int(d.name) not in self.mods:
                         unused.append(d)
@@ -991,7 +1065,7 @@ class Library:
         try:
             self._remove_from_game(e)
         finally:
-            shutil.rmtree(CACHE_DIR / str(mod_id), ignore_errors=True)
+            shutil.rmtree(MODS_CACHE / str(mod_id), ignore_errors=True)
             self.save()
         log(tr("lib.removed", name=e.name))
 
@@ -999,6 +1073,8 @@ class Library:
                    log: Callable[[str], None] = lambda s: None,
                    check: bool = False, install_updates: bool = False) -> dict:
         report: dict = {"updated": [], "installed": [], "ok": 0, "failed": [], "sub_ids": None}
+        if any(e.enabled for e in self.mods.values()):
+            self.paks_dir()
         self.convert_to_local()
         client = self.client if self.config.token else None
 
@@ -1115,7 +1191,7 @@ class Library:
 
     @staticmethod
     def _remember_meta(e: ModEntry, mod: dict, client: Optional[ModioClient]) -> None:
-        e.name = mod.get("name") or e.name
+        e.name = mod_name(mod) or e.name
         e.approval = approval_of(mod) or e.approval
         e.game_versions = game_versions_of(mod)
         if "dependencies" in mod and not mod.get("dependencies"):
@@ -1246,7 +1322,7 @@ class Library:
             mf = mod.get("modfile") or {}
             if e is None:
                 self.mods[mid] = ModEntry(
-                    mod_id=mid, game_id=int(mod["game_id"]), name=mod.get("name", str(mid)),
+                    mod_id=mid, game_id=int(mod["game_id"]), name=mod_name(mod) or str(mid),
                     slug=mod.get("name_id") or str(mid), url=mod.get("profile_url") or "",
                     mode=self.config.default_mode,
                     file_id=mf.get("id") if self.config.default_mode == MODE_SUBSCRIBE else None,
@@ -1275,7 +1351,7 @@ class Library:
             n += 1
             if mid not in self.mods:
                 self.mods[mid] = ModEntry(
-                    mod_id=mid, game_id=gid, name=mod.get("name", str(mid)),
+                    mod_id=mid, game_id=gid, name=mod_name(mod) or str(mid),
                     slug=mod.get("name_id") or str(mid), url=mod.get("profile_url") or "",
                     mode=MODE_LOCAL, approval=approval_of(mod))
         self.save()
@@ -1307,11 +1383,6 @@ class Library:
                 e = self.add_local_file(str(pak), log=log)
                 names.append(e.name)
         return names
-
-    def not_verified(self, ids: Optional[list[int]] = None) -> list[str]:
-        return sorted(e.name for e in self.mods.values()
-                      if e.enabled and e.approval in ("Approved", "Sandbox")
-                      and (ids is None or e.mod_id in ids))
 
     def blueprint_mods(self) -> list[tuple[str, dict]]:
         out = []
@@ -1371,6 +1442,8 @@ class Library:
         if st == "no_override":
             self.fix_proton()
         ue = integration.ue4ss_dir(integration.win64_dir(paks))
+        if proton.needed():
+            integration.proton_settings(ue / "UE4SS-settings.ini")
         return integration.write_mod_list(ue, self.blueprint_mods())
 
     def install_integration(self, fetch=None, log: Callable[[str], None] = lambda s: None) -> int:

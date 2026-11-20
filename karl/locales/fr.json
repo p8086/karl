@@ -166,7 +166,6 @@
   "err.not_paks": "{path} ne semble pas être le dossier FSD\\Content\\Paks de Deep Rock Galactic : vérifiez les Paramètres.",
   "loader.found": "Des fichiers d'un autre gestionnaire de mods sont encore actifs dans le dossier du jeu :\n{files}\n\nIls interfèrent avec les mods installés par Karl.\nLes déplacer dans une sauvegarde ? Rien n'est supprimé (jeu fermé).",
   "loader.moved": "Fichiers de l'autre gestionnaire de mods déplacés dans {path}",
-  "warn.not_verified": "Ces mods ne sont pas Verified :\n{mods}\n\nAvec Karl, le jeu ne les signale pas : les autres joueurs du lobby ne voient pas que la partie est moddée et les mods Sandbox écrivent dans ta sauvegarde normale. Utilise-les en partie privée ou avec des amis prévenus.",
   "mine.check": "🔄 Rechercher les mises à jour",
   "mine.apply": "💾 Installer et enregistrer",
   "mine.apply_n": "💾 Installer et enregistrer ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Note ce mod sur mod.io",
   "vote.saved": "Vote envoyé à mod.io.",
   "vote.removed": "Vote retiré.",
-  "vote.failed": "Impossible d'envoyer le vote : {msg}"
+  "vote.failed": "Impossible d'envoyer le vote : {msg}",
+  "settings.install": "Installation du jeu",
+  "install.add": "Ajouter…",
+  "install.rename": "Renommer…",
+  "install.remove": "Retirer",
+  "install.ask_name": "Nom de cette installation (ex. Steam, Bêta, carte SD du Steam Deck) :",
+  "install.cant_remove": "Tu ne peux pas retirer l'installation active ni l'installation principale.",
+  "install.confirm_remove": "Retirer « {name} » de Karl ? Karl supprime ses dossiers, l'ordre de chargement et les mods téléchargés pour elle. Les mods déjà présents dans ce dossier du jeu y restent.",
+  "install.duplicate": "Deux installations utilisent le même dossier Paks : donne à chacune son propre dossier.",
+  "install.active": "Installation active : {name}",
+  "install.vanilla_busy": "Attends que DRG soit fermé et que les mods soient remis avant de changer d'installation.",
+  "settings.ui_scale": "Taille de l'interface",
+  "scale.restart": "La nouvelle taille s'applique au redémarrage de Karl. Redémarrer maintenant ?"
 }

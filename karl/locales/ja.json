@@ -166,7 +166,6 @@
   "err.not_paks": "{path} は Deep Rock Galactic の FSD\\Content\\Paks フォルダーではないようです。設定を確認してください。",
   "loader.found": "ゲームフォルダーに別の Mod ローダーのファイルがまだ残っています:\n{files}\n\nKarl がインストールした Mod の動作を妨げます。\nバックアップに移動しますか?何も削除されません(ゲームを閉じた状態で)。",
   "loader.moved": "別の Mod ローダーのファイルを {path} に移動しました",
-  "warn.not_verified": "次の Mod は Verified ではありません:\n{mods}\n\nKarl ではゲームがこれらを表示しません。ロビーの他のプレイヤーには Mod 使用中であることが見えず、Sandbox の Mod は通常のセーブに書き込みます。プライベートゲームか、事情を知っている友達とだけ使ってください。",
   "mine.check": "🔄 更新を確認",
   "mine.apply": "💾 インストールして保存",
   "mine.apply_n": "💾 インストールして保存 ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "mod.io でこの Mod を評価",
   "vote.saved": "mod.io に評価を送りました。",
   "vote.removed": "評価を取り消しました。",
-  "vote.failed": "評価を送れませんでした: {msg}"
+  "vote.failed": "評価を送れませんでした: {msg}",
+  "settings.install": "ゲームのインストール",
+  "install.add": "追加…",
+  "install.rename": "名前を変更…",
+  "install.remove": "削除",
+  "install.ask_name": "このインストールの名前(例: Steam、ベータ、Steam Deck の SD カード):",
+  "install.cant_remove": "使用中のインストールとメインのインストールは削除できません。",
+  "install.confirm_remove": "「{name}」を Karl から削除しますか?このインストール用のフォルダー、読み込み順、ダウンロードした Mod が削除されます。ゲームフォルダーにある Mod はそのまま残ります。",
+  "install.duplicate": "2 つのインストールが同じ Paks フォルダーを使っています。それぞれ別のフォルダーにしてください。",
+  "install.active": "使用中のインストール: {name}",
+  "install.vanilla_busy": "インストールを切り替える前に、DRG を閉じて Mod が元に戻るのを待ってください。",
+  "settings.ui_scale": "画面のサイズ",
+  "scale.restart": "新しいサイズは Karl の再起動後に反映されます。今すぐ再起動しますか?"
 }

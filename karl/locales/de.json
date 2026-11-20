@@ -166,7 +166,6 @@
   "err.not_paks": "{path} scheint nicht der Ordner FSD\\Content\\Paks von Deep Rock Galactic zu sein: Prüfe die Einstellungen.",
   "loader.found": "Im Spielordner sind noch Dateien eines anderen Mod-Loaders aktiv:\n{files}\n\nSie stören die von Karl installierten Mods.\nIn ein Backup verschieben? Es wird nichts gelöscht (bei geschlossenem Spiel).",
   "loader.moved": "Dateien des anderen Mod-Loaders verschoben nach {path}",
-  "warn.not_verified": "Diese Mods sind nicht Verified:\n{mods}\n\nMit Karl markiert das Spiel sie nicht: Andere Spieler in der Lobby sehen nicht, dass das Spiel gemoddet ist, und Sandbox-Mods schreiben in deinen normalen Spielstand. Nutze sie in privaten Spielen oder mit eingeweihten Freunden.",
   "mine.check": "🔄 Nach Updates suchen",
   "mine.apply": "💾 Installieren und speichern",
   "mine.apply_n": "💾 Installieren und speichern ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Bewerte diese Mod auf mod.io",
   "vote.saved": "Bewertung an mod.io gesendet.",
   "vote.removed": "Bewertung entfernt.",
-  "vote.failed": "Bewertung konnte nicht gesendet werden: {msg}"
+  "vote.failed": "Bewertung konnte nicht gesendet werden: {msg}",
+  "settings.install": "Spielinstallation",
+  "install.add": "Hinzufügen…",
+  "install.rename": "Umbenennen…",
+  "install.remove": "Entfernen",
+  "install.ask_name": "Name dieser Installation (z. B. Steam, Beta, Steam-Deck-SD-Karte):",
+  "install.cant_remove": "Die aktive und die Hauptinstallation können nicht entfernt werden.",
+  "install.confirm_remove": "\"{name}\" aus Karl entfernen? Karl löscht dafür Ordner, Ladereihenfolge und heruntergeladene Mods. Mods, die schon im Spielordner liegen, bleiben dort.",
+  "install.duplicate": "Zwei Installationen verwenden denselben Paks-Ordner: gib jeder einen eigenen Ordner.",
+  "install.active": "Aktive Installation: {name}",
+  "install.vanilla_busy": "Warte, bis DRG geschlossen ist und die Mods zurück sind, bevor du die Installation wechselst.",
+  "settings.ui_scale": "Größe der Oberfläche",
+  "scale.restart": "Die neue Größe wird beim Neustart von Karl übernommen. Jetzt neu starten?"
 }

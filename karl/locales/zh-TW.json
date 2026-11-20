@@ -166,7 +166,6 @@
   "err.not_paks": "{path} 看起來不是 Deep Rock Galactic 的 FSD\\Content\\Paks 資料夾：請檢查設定。",
   "loader.found": "遊戲資料夾中仍有其他模組載入器的檔案處於啟用狀態:\n{files}\n\n它們會干擾 Karl 安裝的模組。\n要移到備份中嗎?不會刪除任何內容(請先關閉遊戲)。",
   "loader.moved": "其他模組載入器的檔案已移至 {path}",
-  "warn.not_verified": "以下模組不是 Verified:\n{mods}\n\n使用 Karl 時遊戲不會標記它們:大廳裡的其他玩家看不到這場遊戲使用了模組,Sandbox 模組會寫入你的一般存檔。請在私人遊戲中或與知情的朋友一起使用。",
   "mine.check": "🔄 檢查更新",
   "mine.apply": "💾 安裝並儲存",
   "mine.apply_n": "💾 安裝並儲存 ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "在 mod.io 為此模組評分",
   "vote.saved": "已向 mod.io 送出評分。",
   "vote.removed": "已取消評分。",
-  "vote.failed": "無法送出評分:{msg}"
+  "vote.failed": "無法送出評分:{msg}",
+  "settings.install": "遊戲安裝",
+  "install.add": "加入…",
+  "install.rename": "重新命名…",
+  "install.remove": "移除",
+  "install.ask_name": "此安裝的名稱(例如 Steam、測試版、Steam Deck SD 卡):",
+  "install.cant_remove": "無法移除目前使用的安裝或主要安裝。",
+  "install.confirm_remove": "從 Karl 移除「{name}」?Karl 會刪除它的資料夾、載入順序和已下載的模組。已在該遊戲資料夾中的模組會保留。",
+  "install.duplicate": "兩個安裝使用同一個 Paks 資料夾:請為每個安裝指定各自的資料夾。",
+  "install.active": "目前安裝:{name}",
+  "install.vanilla_busy": "請等 DRG 關閉、模組放回後再切換安裝。",
+  "settings.ui_scale": "介面大小",
+  "scale.restart": "新大小會在 Karl 重新啟動後套用。現在重新啟動嗎?"
 }

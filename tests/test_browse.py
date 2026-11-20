@@ -1668,5 +1668,104 @@ class BatchFourGuiTests(GuiBase):
         app = self.make_app()
         self.assertIs(app.vanilla_btn.master, app.play_btn.master)
 
+class InstallsScaleGuiTests(GuiBase):
+    def make_app(self, **cfg):
+        FakeModio.subs = set()
+        FakeModio.deps = {}
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True, **cfg).save()
+        app = gui.App()
+        self.addCleanup(app.pool.shutdown, wait=True)
+        self.addCleanup(library.use_install, library.MAIN_INSTALL)
+        pump(app, 80)
+        return app
+
+    def test_switch_installation_from_settings(self):
+        app = self.make_app()
+        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        self.assertEqual(app.install_lbl.kw["text"], "")
+        beta = Path(tempfile.mkdtemp()) / "Beta" / "FSD" / "Content" / "Paks"
+        beta.mkdir(parents=True)
+        sd = fake_tk.sys.modules["tkinter.simpledialog"]
+        dlg = gui.SettingsDialog(app)
+        sd.answers[:] = ["Beta"]
+        dlg.add_install()
+        self.assertEqual(dlg.paks.get(), "")
+        dlg.paks.set(str(self.paks))
+        mb = fake_tk.sys.modules["tkinter.messagebox"]
+        mb.messages.clear()
+        dlg.save()
+        self.assertEqual(mb.messages[-1][0], "error")
+        self.assertEqual(app.config_.active_install, "main")
+        dlg.paks.set(str(beta))
+        dlg.save()
+        pump(app)
+        cfg = app.config_
+        self.assertNotEqual(cfg.active_install, "main")
+        self.assertEqual(cfg.paks_dir, str(beta))
+        self.assertEqual(app.lib.mods, {})
+        self.assertEqual(app.mine.tree.get_children(), [])
+        self.assertEqual(app.install_lbl.kw["text"], "·  Beta")
+        self.assertIn("Beta", app.status.get())
+
+        dlg = gui.SettingsDialog(app)
+        main_label = dlg._install_label(dlg._install("main"))
+        dlg.install_var.set(main_label)
+        dlg._pick_install()
+        self.assertEqual(dlg.paks.get(), str(self.paks))
+        dlg.save()
+        pump(app)
+        self.assertEqual(app.config_.active_install, "main")
+        self.assertIn(30, app.lib.mods)
+        self.assertEqual(app.install_lbl.kw["text"], "·  Deep Rock Galactic")
+
+        beta_id = [i["id"] for i in app.config_.installs if i["name"] == "Beta"][0]
+        data_dir = library.install_dirs(beta_id)[0]
+        data_dir.mkdir(parents=True, exist_ok=True)
+        dlg = gui.SettingsDialog(app)
+        dlg.remove_install()
+        self.assertEqual(len(dlg.installs), 2)
+        dlg.install_var.set(dlg._install_label(dlg._install(beta_id)))
+        dlg._pick_install()
+        dlg.remove_install()
+        dlg.save()
+        self.assertEqual([i["id"] for i in app.config_.installs], ["main"])
+        self.assertFalse(data_dir.exists())
+        self.assertEqual(app.install_lbl.kw["text"], "")
+
+    def test_interface_scale(self):
+        app = self.make_app(ui_scale=1.5)
+        self.assertEqual(gui.ui.SCALE, 1.5)
+        self.assertEqual(browse.CARD_W, 435)
+        restarted = []
+        app.restart = lambda: restarted.append(True)
+        dlg = gui.SettingsDialog(app)
+        self.assertEqual(dlg.scale_var.get(), "150%")
+        dlg.scale_var.set("100%")
+        dlg.save()
+        self.assertEqual(Config.load().ui_scale, 1.0)
+        self.assertEqual(restarted, [True])
+        app2 = gui.App()
+        self.addCleanup(app2.pool.shutdown, wait=True)
+        self.assertEqual(gui.ui.SCALE, 1.0)
+        self.assertEqual(browse.CARD_W, 290)
+
+class PaksValidationTests(GuiBase):
+    def test_settings_refuse_missing_paks(self):
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True).save()
+        app = gui.App()
+        self.addCleanup(app.pool.shutdown, wait=True)
+        pump(app, 80)
+        good = app.config_.paks_dir
+        dlg = gui.SettingsDialog(app)
+        dlg.paks.set(good + "/home/pe8086/.steam/Paks")
+        mb = fake_tk.sys.modules["tkinter.messagebox"]
+        mb.messages.clear()
+        dlg.save()
+        self.assertEqual(mb.messages[-1][0], "error")
+        self.assertEqual(Config.load().paks_dir, good)
+        self.assertFalse(dlg.destroyed)
+
 if __name__ == "__main__":
     unittest.main()

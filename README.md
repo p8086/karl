@@ -43,6 +43,7 @@ Pillow is used for mod covers, which are often JPEG. Without it Karl still works
 Karl finds the game on its own, also with Steam installed from Flatpak or Snap and in libraries on other drives or the SD card. Everything else works as on Windows. On top of that:
 
 - **Blueprint mods.** Under Proton, UE4SS only starts if Wine uses the `dwmapi.dll` in the game folder. Karl sets this up by itself in DRG's Proton prefix (`steamapps/compatdata/548430/pfx/user.reg`, the same thing `winecfg` would do), so you **don't** need to add `WINEDLLOVERRIDES` to the Steam launch options. The prefix only exists after the first launch: if you have never started DRG, Karl tells you. Start it once from Steam, close it and press **Install and save**. A copy of the original file is kept as `user.reg.karl-backup`.
+- **UE4SS hooks.** Under Proton, some of UE4SS 3.0.1's engine hooks make DRG crash on the loading screen (`EXCEPTION_ACCESS_VIOLATION`, with a `crash_*.dmp` in `Binaries/Win64`). On Linux Karl turns all of them off in `UE4SS-settings.ini` (the `Hook… = 0` lines) together with UE4SS's crash dumper, and checks it again every time it saves. Karl's loader starts blueprint mods through a native hook, so Mod Hub and the other blueprint mods keep working. **Diagnostics** shows the state on the *Proton: UE4SS hooks* line.
 - **Play** starts DRG through Steam (native or Flatpak). Karl detects the running game under Proton too, so developer mode can close and restart it as on Windows.
 
 ## Signing in with mod.io
@@ -153,6 +154,10 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Updating Karl.** At the bottom right, next to the progress bar, there is a **GitHub ↗** link to this page. If **Show the Karl update icon** is ticked in **Settings → Maintenance**, the ⟳ update icon appears next to it. With **Check for new versions of Karl at every startup** also ticked, Karl checks GitHub each time it opens; untick it and Karl checks only when you click the icon. When a new version is out the icon becomes **⟳ !**. Click it and Karl updates itself: it downloads the new `Karl.exe` (or the Linux binary) from the latest release, replaces the old one and restarts. With no update pending, clicking ⟳ checks again right away. If you run Karl from the source code, the icon opens the releases page instead (update with `git pull`). Untick **Show the Karl update icon** to hide the icon and stop every check.
 
+**Several game installations.** In **Settings → Game installation** press **Add…**, give it a name (for example *Steam Deck SD card* or *Second copy*) and pick its Paks folder with **Browse** or **Detect**. Choose an installation in the list and press **Save** to switch to it. Each installation has its own mod folders, load order, switches, time machine and downloaded files, so different versions of the same mod never get mixed up. With more than one installation, the active one is shown next to Karl's name at the top. **Remove** deletes Karl's data for an installation (not the mods already in that game folder); the active and the main installation can't be removed. Note that Steam's beta branches replace the game files in the same folder: a separate installation is useful when DRG really is in two places, for example on two drives or a copy of the game.
+
+**Interface size.** **Settings → Interface size** makes text, buttons, list rows and cards bigger: 100%, 125%, 150%, 175% or 200%. Handy on 4K screens and on the Steam Deck. Karl applies it after a restart and offers to restart right away.
+
 **Compact mode.** **Hide links** (above the list, or Ctrl+L) hides the *Mod links* box to give the list more room, handy on small screens and the Steam Deck. Karl remembers the choice; the box comes back by itself when you copy a link from Browse.
 
 **Keyboard shortcuts.**
@@ -197,7 +202,7 @@ The game counts mods as "its own" in two places: your **mod.io account subscript
 
 At startup Karl moves into `Content\Paks` the mods that older versions put in `FSD\Mods` and converts the ones that were in subscription mode.
 
-**Non-Verified mods.** The Category column shows Verified, Approved or Sandbox. When you add an Approved or Sandbox mod, Karl warns you: the game doesn't flag it to the other players in the lobby, and Sandbox mods write to your normal save instead of the sandbox one.
+**Non-Verified mods.** The Category column shows Verified, Approved or Sandbox. Keep in mind that with Karl the game doesn't flag Approved and Sandbox mods to the other players in the lobby, and Sandbox mods write to your normal save instead of the sandbox one.
 
 ### Blueprint mods: Karl's integration
 
@@ -249,6 +254,7 @@ mod.io filter names (groups and tags) are translated too, when the website provi
 - `~/.config/karl/cartelle.json`: mod folders
 - `~/.config/karl/istantanee.json`: time machine snapshots
 - `~/.cache/karl/`: downloaded paks and covers
+- `~/.config/karl/installs/<id>/` and `~/.cache/karl/installs/<id>/`: the same files for each extra game installation
 
 ## Project layout
 

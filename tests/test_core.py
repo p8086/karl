@@ -628,7 +628,6 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.lib.unsubscribe_all(subs), 1)
         self.assertEqual(FakeClient.subs, set())
         self.assertEqual(self.lib.mods[42].approval, "Approved")
-        self.assertEqual(self.lib.not_verified(), ["Test Mod"])
         self.assertEqual(self.lib.needs_install(), [42])
 
     def test_foreign_loader(self):
@@ -975,6 +974,110 @@ class BatchFourTests(unittest.TestCase):
         self.cfg.paks_dir = ""
         text = diagnostics.format_report(diagnostics.run(self.lib, network=False))
         self.assertIn("[FAIL] Paks folder: not set", text)
+
+class InstallsAndScaleTests(unittest.TestCase):
+    def setUp(self):
+        root = Path(tempfile.mkdtemp())
+        self.main_paks = root / "a" / "FSD" / "Content" / "Paks"
+        self.beta_paks = root / "b" / "FSD" / "Content" / "Paks"
+        for p in (self.main_paks, self.beta_paks):
+            p.mkdir(parents=True)
+            (p / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        FakeClient.version = {"file_id": 1, "v": "1.0"}
+        FakeClient.deps = {}
+        self.addCleanup(library.use_install, library.MAIN_INSTALL)
+
+    def test_scale_helpers(self):
+        from karl import ui
+        self.addCleanup(ui.set_scale, 1.0)
+        self.assertEqual(ui.set_scale(1.3), 1.25)
+        self.assertEqual(ui.px(28), 35)
+        self.assertEqual(ui.label(1.5), "150%")
+        self.assertEqual(ui.set_scale("x"), 1.0)
+        self.assertEqual(ui.px(28), 28)
+
+    def test_separate_installs(self):
+        cfg = Config(token="t", paks_dir=str(self.main_paks))
+        cfg.save()
+        cfg = Config.load()
+        self.assertEqual([i["id"] for i in cfg.installs], ["main"])
+        self.assertEqual(cfg.installs[0]["paks_dir"], str(self.main_paks))
+        lib = Library(cfg, client_factory=FakeClient)
+        lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        main_cache = library.MODS_CACHE
+        self.assertTrue(list(self.main_paks.glob("*karl_test-mod*")))
+
+        beta = cfg.add_install("Beta", str(self.beta_paks))
+        cfg.activate(beta)
+        self.assertEqual(cfg.paks_dir, str(self.beta_paks))
+        lib2 = Library(cfg, client_factory=FakeClient)
+        self.assertEqual(lib2.mods, {})
+        self.assertNotEqual(library.MODS_CACHE, main_cache)
+        self.assertIn("installs", str(library.LIBRARY_FILE))
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        e = lib2.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertEqual(e.version, "2.0")
+        self.assertTrue(str(e.cached_paks[0]).startswith(str(library.MODS_CACHE)))
+        self.assertTrue(list(self.beta_paks.glob("*karl_test-mod*")))
+
+        cfg = Config.load()
+        self.assertEqual(cfg.active_install, beta)
+        cfg.activate("main")
+        self.assertEqual(cfg.paks_dir, str(self.main_paks))
+        lib3 = Library(cfg, client_factory=FakeClient)
+        self.assertEqual(lib3.mods[42].version, "1.0")
+        self.assertEqual(Path(lib3.mods[42].cached_paks[0]).read_bytes(), b"PAK1.0")
+        self.assertEqual(library.MODS_CACHE, main_cache)
+
+        cfg.installs = [i for i in cfg.installs if i["id"] != beta]
+        cfg.active_install = beta
+        cfg.ensure_installs()
+        self.assertEqual(cfg.active_install, "main")
+
+class ProtonFixTests(unittest.TestCase):
+    def test_proton_settings(self):
+        from karl import integration
+        ini = Path(tempfile.mkdtemp()) / "UE4SS-settings.ini"
+        ini.write_text("[Hooks]\nHookProcessInternal = 1\nHookBeginPlay=true\n"
+                       "HookEngineTick = 0\n[CrashDump]\nEnableDumping = 1\nFullMemoryDump = 1\n"
+                       "[General]\nbUseUObjectArrayCache = true\n", encoding="utf-8")
+        self.assertTrue(integration.proton_hooks_on(ini))
+        self.assertTrue(integration.proton_settings(ini))
+        text = ini.read_text(encoding="utf-8")
+        self.assertIn("HookProcessInternal = 0", text)
+        self.assertIn("HookBeginPlay=0", text)
+        self.assertIn("EnableDumping = 0", text)
+        self.assertIn("FullMemoryDump = 1", text)
+        self.assertIn("bUseUObjectArrayCache = true", text)
+        self.assertFalse(integration.proton_hooks_on(ini))
+        self.assertFalse(integration.proton_settings(ini))
+        self.assertFalse(integration.proton_settings(ini.with_name("missing.ini")))
+
+    def test_names_unescaped(self):
+        from karl.modio import dependency_info, mod_name
+        self.assertEqual(mod_name({"name": "vitals &amp; resources hud "}), "vitals & resources hud")
+        self.assertEqual(dependency_info({"mod_id": 3, "name": "A &amp; B"})["name"], "A & B")
+
+    def test_missing_paks_fails_once(self):
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
+        paks.mkdir(parents=True)
+        cfg = Config(token="t", paks_dir=str(paks))
+        lib = Library(cfg, client_factory=FakeClient)
+        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e.name = "a &amp; b"
+        lib.save()
+        self.assertEqual(Library(cfg, client_factory=FakeClient).mods[42].name, "a & b")
+        cfg.paks_dir = str(paks) + "/home/x/Paks"
+        with self.assertRaises(library.ModioError):
+            lib.update_all()
 
 if __name__ == "__main__":
     unittest.main()

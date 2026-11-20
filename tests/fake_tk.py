@@ -54,7 +54,7 @@ class Widget:
         "tk_popup", "add_command", "add", "column", "set", "theme_use", "map",
         "itemconfigure", "yview_moveto", "yview_scroll", "unbind_all",
         "update_idletasks", "columnconfigure", "rowconfigure", "select", "index", "tab",
-        "deiconify", "focus_force", "attributes", "withdraw",
+        "deiconify", "focus_force", "attributes", "withdraw", "bind_class",
     }
 
     def __getattr__(self, name):

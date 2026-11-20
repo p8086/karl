@@ -166,7 +166,6 @@
   "err.not_paks": "{path} nie wygląda na folder FSD\\Content\\Paks gry Deep Rock Galactic: sprawdź ustawienia.",
   "loader.found": "W folderze gry są nadal aktywne pliki innego menedżera modów:\n{files}\n\nZakłócają mody zainstalowane przez Karla.\nPrzenieść je do kopii zapasowej? Nic nie zostanie usunięte (przy zamkniętej grze).",
   "loader.moved": "Pliki innego menedżera modów przeniesiono do {path}",
-  "warn.not_verified": "Te mody nie są Verified:\n{mods}\n\nZ Karlem gra ich nie oznacza: inni gracze w lobby nie widzą, że gra jest zmodowana, a mody Sandbox zapisują do twojego zwykłego zapisu. Używaj ich w prywatnych grach lub z uprzedzonymi znajomymi.",
   "mine.check": "🔄 Sprawdź aktualizacje",
   "mine.apply": "💾 Zainstaluj i zapisz",
   "mine.apply_n": "💾 Zainstaluj i zapisz ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Oceń ten mod na mod.io",
   "vote.saved": "Głos wysłany do mod.io.",
   "vote.removed": "Głos usunięty.",
-  "vote.failed": "Nie udało się wysłać głosu: {msg}"
+  "vote.failed": "Nie udało się wysłać głosu: {msg}",
+  "settings.install": "Instalacja gry",
+  "install.add": "Dodaj…",
+  "install.rename": "Zmień nazwę…",
+  "install.remove": "Usuń",
+  "install.ask_name": "Nazwa tej instalacji (np. Steam, Beta, karta SD w Steam Decku):",
+  "install.cant_remove": "Nie możesz usunąć aktywnej ani głównej instalacji.",
+  "install.confirm_remove": "Usunąć \"{name}\" z Karla? Karl skasuje jej foldery, kolejność ładowania i pobrane mody. Mody, które już są w folderze gry, zostaną tam.",
+  "install.duplicate": "Dwie instalacje używają tego samego folderu Paks: daj każdej osobny folder.",
+  "install.active": "Aktywna instalacja: {name}",
+  "install.vanilla_busy": "Poczekaj, aż DRG się zamknie i mody wrócą, zanim zmienisz instalację.",
+  "settings.ui_scale": "Rozmiar interfejsu",
+  "scale.restart": "Nowy rozmiar zostanie zastosowany po ponownym uruchomieniu Karla. Uruchomić ponownie teraz?"
 }

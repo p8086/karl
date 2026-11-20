@@ -8,7 +8,9 @@ if __name__ == "__main__" and not __package__:
     _main()
     raise SystemExit
 
+import os
 import queue
+import shutil
 import re
 import sys
 import tempfile
@@ -23,10 +25,11 @@ from typing import Callable, Optional
 
 from . import APP_TITLE, GITHUB_REPO, VERSION, game
 from .browse import BrowseTab, Choice, flat_button, human_date, human_size, set_button_style
-from . import diagnostics, selfupdate, single, tray as karl_tray
+from . import browse as browse_mod, diagnostics, selfupdate, single, tray as karl_tray, ui
+from .ui import px
 from .details import ModDetails
 from .library import (MODE_LOCAL, MODE_SUBSCRIBE, SOURCE_FILE, Config, Library,
-                      extract_local_paths, find_paks_dir)
+                      extract_local_paths, find_paks_dir, install_dirs)
 from . import i18n
 from .i18n import tr
 from .log import log
@@ -55,11 +58,10 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__(className="Karl")
         self.title(f"{APP_TITLE} {VERSION}")
-        self.geometry("1360x860")
-        self.minsize(900, 560)
         self.configure(bg=BG)
 
         self.config_ = Config.load()
+        self._apply_scale(self.config_.ui_scale)
         i18n.set_language(self.config_.language)
         self.lib = Library(self.config_)
         self.events: "queue.Queue[tuple]" = queue.Queue()
@@ -74,6 +76,11 @@ class App(tk.Tk):
         self.after(50, self._poll)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self._bind_shortcuts()
+        for cls in ("TEntry", "Entry"):
+            try:
+                self.bind_class(cls, "<<Paste>>", self._paste_replace)
+            except (tk.TclError, AttributeError):
+                pass
         self.apply_update_icon()
         self.update_account()
         if self.config_.logged_in:
@@ -237,6 +244,26 @@ class App(tk.Tk):
             pass
         self.after(50, self._poll)
 
+    def _apply_scale(self, value: float):
+        scale = ui.set_scale(value)
+        browse_mod.apply_scale()
+        try:
+            base = getattr(self, "_base_scaling", None)
+            if base is None:
+                base = float(self.tk.call("tk", "scaling"))
+                self._base_scaling = base
+            self.tk.call("tk", "scaling", base * scale)
+        except (tk.TclError, AttributeError, TypeError, ValueError):
+            pass
+        w, h = px(1360), px(860)
+        try:
+            sw, sh = int(self.winfo_screenwidth()), int(self.winfo_screenheight())
+            w, h = min(w, max(800, sw - 40)), min(h, max(500, sh - 80))
+        except (tk.TclError, AttributeError, TypeError, ValueError):
+            pass
+        self.geometry(f"{w}x{h}")
+        self.minsize(min(px(900), w), min(px(560), h))
+
     def _set_icon(self):
         if sys.platform == "win32":
             try:
@@ -262,7 +289,7 @@ class App(tk.Tk):
         s.configure("TFrame", background=BG)
         s.configure("TLabel", background=BG, foreground=FG)
         s.configure("Muted.TLabel", foreground=MUTED)
-        s.configure("TButton", background=BUTTON, foreground=FG, padding=6, borderwidth=0)
+        s.configure("TButton", background=BUTTON, foreground=FG, padding=px(6), borderwidth=0)
         s.map("TButton", background=[("active", BUTTON_HOVER)])
         s.configure("Accent.TButton", background=ACCENT, foreground=ON_ACCENT)
         s.map("Accent.TButton", background=[("active", ACCENT_HOVER)])
@@ -278,14 +305,14 @@ class App(tk.Tk):
         self.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
         self.option_add("*TCombobox*Listbox.selectForeground", ON_ACCENT)
         s.configure("Treeview", background=PANEL, fieldbackground=PANEL, foreground=FG,
-                    rowheight=28, borderwidth=0)
+                    rowheight=px(28), borderwidth=0)
         s.configure("Treeview.Heading", background=BG, foreground=ACCENT, borderwidth=0)
         s.map("Treeview", background=[("selected", CHIP)])
         s.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=PANEL)
         s.configure("Vertical.TScrollbar", background=PANEL, troughcolor=BG, arrowcolor=MUTED,
                     bordercolor=BG)
         s.configure("TNotebook", background=BG, borderwidth=0, tabmargins=(16, 0, 0, 0))
-        s.configure("TNotebook.Tab", background=BG, foreground=MUTED, padding=(14, 8),
+        s.configure("TNotebook.Tab", background=BG, foreground=MUTED, padding=(px(14), px(8)),
                     borderwidth=0, font=(FONT, 11))
         s.map("TNotebook.Tab", background=[("selected", BG)],
               foreground=[("selected", FG)], font=[("selected", (FONT, 11, "bold"))])
@@ -298,7 +325,7 @@ class App(tk.Tk):
         head.pack(fill="x")
         logo = ASSETS / "logo_header.png"
         if logo.exists():
-            self._head_icon = tk.PhotoImage(file=str(logo))
+            self._head_icon = ui.photo(logo)
         elif self._icons:
             self._head_icon = self._icons[-2] if len(self._icons) > 1 else self._icons[0]
         else:
@@ -308,6 +335,10 @@ class App(tk.Tk):
         tk.Label(head, text=APP_TITLE, bg=BG, fg=FG, font=(FONT, 18, "bold")).pack(side="left", padx=(8, 0))
         tk.Label(head, text="DRG mod loader · made by pe", bg=BG, fg=MUTED, font=(FONT, 10)).pack(
             side="left", padx=(10, 0), pady=(6, 0))
+        self.install_lbl = tk.Label(head, bg=BG, fg=ACCENT, font=(FONT, 10, "bold"),
+                                    text=("·  " + self.install_name())
+                                    if len(self.config_.installs) > 1 else "")
+        self.install_lbl.pack(side="left", padx=(10, 0), pady=(6, 0))
         ttk.Button(head, text=tr("app.settings"), command=self.open_settings).pack(side="right")
         self.account_box = tk.Frame(head, bg=BG)
         self.account_box.pack(side="right", padx=(0, 10))
@@ -646,6 +677,21 @@ class App(tk.Tk):
         self.bind_all("<Control-l>", lambda e: self._shortcut(self.mine.toggle_compact))
         self.bind_all("<Control-L>", lambda e: self._shortcut(self.mine.toggle_compact))
 
+    @staticmethod
+    def _paste_replace(event):
+        w = event.widget
+        try:
+            text = w.clipboard_get()
+        except tk.TclError:
+            return "break"
+        try:
+            if w.selection_present():
+                w.delete("sel.first", "sel.last")
+        except (tk.TclError, AttributeError):
+            pass
+        w.insert("insert", text)
+        return "break"
+
     def _shortcut(self, fn: Callable[[], object]):
         fn()
         return "break"
@@ -786,6 +832,47 @@ class App(tk.Tk):
         self.config_.language = code
         self.config_.save()
         i18n.set_language(code)
+        self.rebuild_ui()
+
+    def restart(self):
+        import subprocess
+        if self.instance is not None:
+            self.instance.close()
+        cmd = [sys.executable] if getattr(sys, "frozen", False) else \
+            [sys.executable, str(Path(sys.argv[0]).resolve())]
+        try:
+            subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, close_fds=True,
+                             **({"start_new_session": True} if sys.platform != "win32" else {}))
+        except OSError as err:
+            self.show_error(str(err))
+            return
+        self.destroy()
+
+    def install_name(self) -> str:
+        return str(self.config_.current_install().get("name") or "")
+
+    def switch_install(self, install_id: str) -> bool:
+        cfg = self.config_
+        if install_id == cfg.active_install:
+            return True
+        if self.busy:
+            return False
+        if cfg.vanilla_active:
+            self.show_error(tr("install.vanilla_busy"))
+            return False
+        if self.mine.wanted and not messagebox.askyesno(APP_TITLE, tr("folder.discard")):
+            return False
+        cfg.activate(install_id)
+        self.lib = Library(cfg)
+        self.rebuild_ui()
+        self.set_status(tr("install.active", name=self.install_name()))
+        self.after(500, self.check_integration)
+        if self.lib.needs_install():
+            self.mine.install_pending()
+        return True
+
+    def rebuild_ui(self):
         tab = self.notebook.index(self.notebook.select()) if self.notebook.select() else 0
         pending_links = self.mine.links_text().strip()
         self.browse.stop()
@@ -918,19 +1005,20 @@ class MineTab(tk.Frame):
 
         mid = tk.Frame(self, bg=BG, padx=16, pady=8)
         mid.pack(fill="both", expand=True)
-        self.sw_on = tk.PhotoImage(file=str(ASSETS / "switch_on.png"))
-        self.sw_off = tk.PhotoImage(file=str(ASSETS / "switch_off.png"))
+        self.sw_on = ui.photo(ASSETS / "switch_on.png")
+        self.sw_off = ui.photo(ASSETS / "switch_off.png")
         self.wanted: dict[int, bool] = {}
         cols = ("nome", "versione", "dimensione", "modalita", "preferito")
         self.tree = ttk.Treeview(mid, columns=cols, show="tree headings", selectmode="extended")
         self.tree.heading("#0", image=self.sw_off, command=self.toggle_all)
-        self.tree.column("#0", width=64, minwidth=64, anchor="center", stretch=False)
+        self.tree.column("#0", width=px(64), minwidth=px(64), anchor="center", stretch=False)
         for c, key, w in zip(cols[:4], ("mine.col_name", "mine.col_version", "mine.col_size",
                                         "mine.col_mode"), (420, 150, 90, 110)):
             self.tree.heading(c, text=tr(key))
-            self.tree.column(c, width=w, anchor="w")
+            self.tree.column(c, width=px(w), anchor="w")
         self.tree.heading("preferito", text="★")
-        self.tree.column("preferito", width=48, minwidth=48, anchor="center", stretch=False)
+        self.tree.column("preferito", width=px(48), minwidth=px(48), anchor="center",
+                         stretch=False)
         self.tree.tag_configure("off", foreground=MUTED)
         self.tree.pack(side="left", fill="both", expand=True)
         self.tree.bind("<Button-1>", self._on_click, add="+")
@@ -1661,9 +1749,6 @@ class MineTab(tk.Frame):
         self._after_update(report)
         if not report["failed"]:
             self.app.set_status(tr("mine.saved"))
-        risky = self.lib.not_verified(newly_on)
-        if risky:
-            self._warn_not_verified(risky)
         self.app.check_modio_subscriptions(force=True)
         self.app.check_integration()
 
@@ -1714,9 +1799,6 @@ class MineTab(tk.Frame):
             app.post(self.refresh)
         added_ids = [self.lib.mods[i].mod_id for i in list(self.lib.mods)
                      if self.lib.mods[i].name in added]
-        risky = self.lib.not_verified(added_ids)
-        if risky:
-            app.post(self._warn_not_verified, risky)
         missing = self.lib.missing_dependencies()
         need = {self.lib.mods[i].name: missing[i] for i in added_ids if i in missing}
         if need:
@@ -1727,10 +1809,6 @@ class MineTab(tk.Frame):
         app.log(summary)
         if failed:
             app.post(self._report_failed, failed)
-
-    def _warn_not_verified(self, names: list[str]):
-        messagebox.showwarning(APP_TITLE, tr("warn.not_verified",
-                                             mods="\n".join(f"• {n}" for n in names[:15])))
 
     def _warn_missing_deps(self, need: dict[str, list[dict]]):
         lines = []
@@ -1899,7 +1977,7 @@ class DiagnosticsDialog(tk.Toplevel):
         self.app = app
         self.title(tr("diag.title"))
         self.configure(bg=BG, padx=16, pady=14)
-        self.geometry("820x560")
+        self.geometry(f"{px(820)}x{px(560)}")
         self.transient(parent or app)
         tk.Label(self, text=tr("diag.intro"), bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
                  justify="left", wraplength=780).pack(fill="x")
@@ -2063,19 +2141,46 @@ class SettingsDialog(tk.Toplevel):
         ttk.Combobox(f, textvariable=self.language.var, state="readonly", width=34,
                      values=self.language.labels(), height=18).grid(row=2, column=0, sticky="w")
 
-        ttk.Label(f, text=tr("settings.paks")).grid(row=3, column=0, sticky="w", pady=(12, 0))
+        cfg.ensure_installs()
+        cfg.store_active()
+        self.installs = [dict(i) for i in cfg.installs]
+        self.removed_installs: list[str] = []
+        self.sel_install = cfg.active_install
+        ttk.Label(f, text=tr("settings.install")).grid(row=3, column=0, sticky="w", pady=(12, 0))
+        self.install_var = tk.StringVar()
+        self.install_combo = ttk.Combobox(f, textvariable=self.install_var, state="readonly",
+                                          width=44)
+        self.install_combo.grid(row=4, column=0, sticky="we")
+        self.install_combo.bind("<<ComboboxSelected>>", lambda _e: self._pick_install())
+        ib = ttk.Frame(f)
+        ib.grid(row=4, column=1, sticky="e", padx=(6, 0))
+        ttk.Button(ib, text=tr("install.add"), command=self.add_install).pack(side="left")
+        ttk.Button(ib, text=tr("install.rename"), command=self.rename_install).pack(
+            side="left", padx=(4, 0))
+        ttk.Button(ib, text=tr("install.remove"), command=self.remove_install).pack(
+            side="left", padx=(4, 0))
+
+        ttk.Label(f, text=tr("settings.paks")).grid(row=5, column=0, sticky="w", pady=(12, 0))
         self.paks = tk.StringVar(value=cfg.paks_dir)
-        ttk.Entry(f, textvariable=self.paks, width=46).grid(row=4, column=0, sticky="we")
+        ttk.Entry(f, textvariable=self.paks, width=46).grid(row=6, column=0, sticky="we")
         bf = ttk.Frame(f)
-        bf.grid(row=4, column=1, sticky="e", padx=(6, 0))
+        bf.grid(row=6, column=1, sticky="e", padx=(6, 0))
         ttk.Button(bf, text=tr("settings.browse"), command=self.browse).pack(side="left")
         ttk.Button(bf, text=tr("settings.detect"), command=self.detect).pack(side="left", padx=(4, 0))
+        self._render_installs()
 
-
-        ttk.Label(f, text=tr("settings.refresh")).grid(row=7, column=0, sticky="w", pady=(12, 0))
+        misc = ttk.Frame(f)
+        misc.grid(row=7, column=0, columnspan=2, sticky="w", pady=(12, 0))
+        ttk.Label(misc, text=tr("settings.refresh")).grid(row=0, column=0, sticky="w")
         self.refresh = tk.StringVar(value=str(cfg.refresh_seconds))
-        ttk.Combobox(f, textvariable=self.refresh, state="readonly", width=16,
-                     values=["30", "60", "120", "300"]).grid(row=8, column=0, sticky="w")
+        ttk.Combobox(misc, textvariable=self.refresh, state="readonly", width=16,
+                     values=["30", "60", "120", "300"]).grid(row=1, column=0, sticky="w")
+        ttk.Label(misc, text=tr("settings.ui_scale")).grid(row=0, column=1, sticky="w",
+                                                           padx=(24, 0))
+        self.scale_var = tk.StringVar(value=ui.label(ui.set_scale(cfg.ui_scale)))
+        ttk.Combobox(misc, textvariable=self.scale_var, state="readonly", width=10,
+                     values=[ui.label(s) for s in ui.SCALES]).grid(row=1, column=1, sticky="w",
+                                                                   padx=(24, 0))
 
         tk.Label(f, text=tr("settings.maintenance"), bg=BG, fg=ACCENT,
                  font=(FONT, 11, "bold")).grid(row=9, column=0, sticky="w", pady=(16, 2))
@@ -2232,6 +2337,66 @@ class SettingsDialog(tk.Toplevel):
         self.app.logout()
         self._build_token_section()
 
+    def _install(self, install_id: str) -> dict:
+        return next(i for i in self.installs if i["id"] == install_id)
+
+    def _install_label(self, inst: dict) -> str:
+        mark = "  ✓" if inst["id"] == self.app.config_.active_install else ""
+        return f"{inst['name']}{mark}"
+
+    def _render_installs(self):
+        labels = [self._install_label(i) for i in self.installs]
+        self.install_combo.configure(values=labels)
+        self.install_var.set(self._install_label(self._install(self.sel_install)))
+
+    def _store_install(self):
+        self._install(self.sel_install)["paks_dir"] = self.paks.get().strip()
+
+    def _pick_install(self):
+        labels = [self._install_label(i) for i in self.installs]
+        value = self.install_var.get()
+        if value not in labels:
+            return
+        self._store_install()
+        self.sel_install = self.installs[labels.index(value)]["id"]
+        self.paks.set(self._install(self.sel_install).get("paks_dir", ""))
+
+    def add_install(self):
+        name = simpledialog.askstring(tr("settings.title"), tr("install.ask_name"), parent=self)
+        if not name or not name.strip():
+            return
+        self._store_install()
+        import uuid
+        new = {"id": uuid.uuid4().hex[:10], "name": name.strip()[:40], "paks_dir": "",
+               "game_build": ""}
+        self.installs.append(new)
+        self.sel_install = new["id"]
+        self.paks.set("")
+        self._render_installs()
+
+    def rename_install(self):
+        inst = self._install(self.sel_install)
+        name = simpledialog.askstring(tr("settings.title"), tr("install.ask_name"),
+                                      initialvalue=inst["name"], parent=self)
+        if name and name.strip():
+            inst["name"] = name.strip()[:40]
+            self._render_installs()
+
+    def remove_install(self):
+        cfg = self.app.config_
+        inst = self._install(self.sel_install)
+        if inst["id"] in (cfg.active_install, "main"):
+            messagebox.showwarning(tr("settings.title"), tr("install.cant_remove"), parent=self)
+            return
+        if not messagebox.askyesno(tr("settings.title"),
+                                   tr("install.confirm_remove", name=inst["name"]), parent=self):
+            return
+        self.installs.remove(inst)
+        self.removed_installs.append(inst["id"])
+        self.sel_install = cfg.active_install
+        self.paks.set(self._install(self.sel_install).get("paks_dir", ""))
+        self._render_installs()
+
     def browse(self):
         d = filedialog.askdirectory(initialdir=self.paks.get() or None)
         if d:
@@ -2246,7 +2411,26 @@ class SettingsDialog(tk.Toplevel):
 
     def save(self):
         app, cfg = self.app, self.app.config_
-        cfg.paks_dir = self.paks.get().strip()
+        self._store_install()
+        dirs = [os.path.normcase(os.path.abspath(i["paks_dir"])) for i in self.installs
+                if i.get("paks_dir")]
+        if len(dirs) != len(set(dirs)):
+            messagebox.showerror(tr("settings.title"), tr("install.duplicate"), parent=self)
+            return
+        bad = [i["paks_dir"] for i in self.installs
+               if i.get("paks_dir") and not Path(i["paks_dir"]).expanduser().is_dir()]
+        if bad:
+            messagebox.showerror(tr("settings.title"), tr("err.paks_missing", path=bad[0]),
+                                 parent=self)
+            return
+        cfg.installs = [dict(i) for i in self.installs]
+        cfg.paks_dir = self._install(cfg.active_install).get("paks_dir", "")
+        target = self.sel_install
+        old_scale = ui.set_scale(cfg.ui_scale)
+        labels = [ui.label(s) for s in ui.SCALES]
+        if self.scale_var.get() in labels:
+            cfg.ui_scale = ui.SCALES[labels.index(self.scale_var.get())]
+        ui.set_scale(old_scale)
         cfg.default_mode = MODE_LOCAL
         cfg.refresh_seconds = int(self.refresh.get() or 60)
         cfg.auto_check_updates = bool(self.auto_updates.get())
@@ -2269,7 +2453,17 @@ class SettingsDialog(tk.Toplevel):
         app.apply_tray()
         if cfg.warn_removed and not removed_was:
             app.check_removed_mods()
+        for install_id in self.removed_installs:
+            for d in install_dirs(install_id):
+                shutil.rmtree(d, ignore_errors=True)
         app.set_status(tr("status.settings_saved"))
+        if target != cfg.active_install:
+            app.switch_install(target)
+        elif len(cfg.installs) > 1 or self.removed_installs:
+            app.install_lbl.configure(text=("·  " + app.install_name())
+                                      if len(cfg.installs) > 1 else "")
+        if cfg.ui_scale != old_scale and messagebox.askyesno(APP_TITLE, tr("scale.restart")):
+            app.restart()
 
 
 class CacheDialog(tk.Toplevel):

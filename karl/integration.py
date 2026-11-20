@@ -99,6 +99,25 @@ def quiet_settings(ini: Path) -> None:
     ini.write_text(text, encoding="utf-8")
 
 
+def proton_settings(ini: Path) -> bool:
+    if not ini.is_file():
+        return False
+    text = ini.read_text(encoding="utf-8", errors="replace")
+    new = re.sub(r"(?m)^(\s*Hook\w+\s*=\s*)(?:1|true)\b", r"\g<1>0", text)
+    new = re.sub(r"(?m)^(\s*EnableDumping\s*=\s*)(?:1|true)\b", r"\g<1>0", new)
+    if new == text:
+        return False
+    ini.write_text(new, encoding="utf-8")
+    return True
+
+
+def proton_hooks_on(ini: Path) -> bool:
+    if not ini.is_file():
+        return False
+    text = ini.read_text(encoding="utf-8", errors="replace")
+    return bool(re.search(r"(?m)^\s*Hook\w+\s*=\s*(?:1|true)\b", text))
+
+
 def install_ue4ss(paks_dir: Path, fetch: Callable[[str], bytes] = _http_get,
                   log: Callable[[str], None] = lambda s: None) -> Path:
     win64 = win64_dir(paks_dir)
@@ -111,6 +130,8 @@ def install_ue4ss(paks_dir: Path, fetch: Callable[[str], bytes] = _http_get,
     if d is None:
         raise IntegrationError("UE4SS scaricato, ma non trovo UE4SS.dll")
     quiet_settings(d / "UE4SS-settings.ini")
+    if proton.needed():
+        proton_settings(d / "UE4SS-settings.ini")
     return d
 
 

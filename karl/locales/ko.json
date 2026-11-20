@@ -166,7 +166,6 @@
   "err.not_paks": "{path}은(는) Deep Rock Galactic의 FSD\\Content\\Paks 폴더가 아닌 것 같습니다. 설정을 확인하세요.",
   "loader.found": "게임 폴더에 다른 모드 로더의 파일이 아직 활성화되어 있습니다:\n{files}\n\nKarl이 설치한 모드를 방해합니다.\n백업으로 옮길까요? 아무것도 삭제되지 않습니다(게임을 닫은 상태에서).",
   "loader.moved": "다른 모드 로더 파일을 {path}(으)로 옮겼습니다",
-  "warn.not_verified": "다음 모드는 Verified가 아닙니다:\n{mods}\n\nKarl에서는 게임이 이 모드들을 표시하지 않습니다. 로비의 다른 플레이어는 게임에 모드가 적용된 것을 볼 수 없고, Sandbox 모드는 일반 세이브에 기록됩니다. 비공개 게임이나 알고 있는 친구들과만 사용하세요.",
   "mine.check": "🔄 업데이트 확인",
   "mine.apply": "💾 설치 및 저장",
   "mine.apply_n": "💾 설치 및 저장 ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "mod.io에서 이 모드 평가",
   "vote.saved": "mod.io에 평가를 보냈습니다.",
   "vote.removed": "평가를 취소했습니다.",
-  "vote.failed": "평가를 보내지 못했습니다: {msg}"
+  "vote.failed": "평가를 보내지 못했습니다: {msg}",
+  "settings.install": "게임 설치",
+  "install.add": "추가…",
+  "install.rename": "이름 바꾸기…",
+  "install.remove": "제거",
+  "install.ask_name": "이 설치의 이름(예: Steam, 베타, Steam Deck SD 카드):",
+  "install.cant_remove": "사용 중인 설치와 기본 설치는 제거할 수 없습니다.",
+  "install.confirm_remove": "Karl에서 \"{name}\"을(를) 제거할까요? 이 설치의 폴더, 로드 순서, 다운로드한 모드가 삭제됩니다. 게임 폴더에 이미 있는 모드는 그대로 남습니다.",
+  "install.duplicate": "두 설치가 같은 Paks 폴더를 사용합니다. 각각 다른 폴더를 지정하세요.",
+  "install.active": "사용 중인 설치: {name}",
+  "install.vanilla_busy": "설치를 바꾸기 전에 DRG가 닫히고 모드가 돌아올 때까지 기다리세요.",
+  "settings.ui_scale": "인터페이스 크기",
+  "scale.restart": "새 크기는 Karl을 다시 시작하면 적용됩니다. 지금 다시 시작할까요?"
 }

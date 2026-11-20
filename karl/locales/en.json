@@ -166,7 +166,6 @@
   "mine.converting": "Karl is installing {n} mods...",
   "loader.found": "Files from another mod loader are still active in the game folder:\n{files}\n\nThey interfere with the mods installed by Karl.\nMove them to a backup? Nothing is deleted (do it with the game closed).",
   "loader.moved": "Other mod loader files moved to {path}",
-  "warn.not_verified": "These mods are not Verified:\n{mods}\n\nWith Karl the game doesn't flag them: other players in the lobby can't see the game is modded, and Sandbox mods write to your normal save. Use them in private games or with friends who know.",
   "mine.check": "🔄 Check for updates",
   "mine.apply": "💾 Install and save",
   "mine.apply_n": "💾 Install and save ({n})",
@@ -377,5 +376,17 @@
   "vote.hint": "Rate this mod on mod.io",
   "vote.saved": "Vote sent to mod.io.",
   "vote.removed": "Vote removed.",
-  "vote.failed": "Couldn't send the vote: {msg}"
+  "vote.failed": "Couldn't send the vote: {msg}",
+  "settings.install": "Game installation",
+  "install.add": "Add…",
+  "install.rename": "Rename…",
+  "install.remove": "Remove",
+  "install.ask_name": "Name of this installation (e.g. Steam, Beta, Steam Deck SD card):",
+  "install.cant_remove": "You can't remove the active installation or the main one.",
+  "install.confirm_remove": "Remove \"{name}\" from Karl? Karl deletes its folders, load order and downloaded mods for it. The mods already in that game folder stay there.",
+  "install.duplicate": "Two installations use the same Paks folder: give each one its own folder.",
+  "install.active": "Active installation: {name}",
+  "install.vanilla_busy": "Wait until DRG closes and the mods are back before switching installation.",
+  "settings.ui_scale": "Interface size",
+  "scale.restart": "The new size is applied when Karl restarts. Restart now?"
 }
