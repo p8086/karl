@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Optional
+
+from .paths import read_json, write_json
 
 MAX_ENTRIES = 2000
 CHANGE_KINDS = ("added", "removed", "updated", "on", "off", "rollback", "order")
@@ -17,18 +18,14 @@ class History:
 
     def load(self) -> None:
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            data = read_json(self.path, [])
             self.entries = [e for e in data if isinstance(e, dict) and e.get("kind")]
         except (OSError, ValueError, TypeError):
             self.entries = []
 
     def save(self) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_name(self.path.name + ".tmp")
-            tmp.write_text(json.dumps(self.entries[-MAX_ENTRIES:], ensure_ascii=False, indent=1),
-                           encoding="utf-8")
-            tmp.replace(self.path)
+            write_json(self.path, self.entries[-MAX_ENTRIES:])
         except OSError:
             pass
 

@@ -7,17 +7,16 @@ import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from tkinter import ttk
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
 
 from . import i18n
-from .i18n import months, tr
-from .paths import CACHE_DIR
-from .modio import fetch_bytes, mod_name
-from .ui import px
-from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CARD, CHIP, FG,
-                    FONT, MUTED, ON_ACCENT, PANEL)
-
+from .i18n import human_count, human_date, human_size, tr
 from .log import log
+from .modio import fetch_bytes, mod_name
+from .paths import CACHE_DIR
+from .theme import ACCENT, BG, BORDER, CARD, CHIP, DANGER, FG, FONT, IMAGE_BG, MUTED, PANEL, SUCCESS
+from .ui import px
+from .widgets import flat_button, set_button_style
 
 try:
     from PIL import Image, ImageTk
@@ -104,33 +103,6 @@ def build_query(search: str, selected: dict[str, set[str]], group_types: dict[st
         return all(names & group for group in local_groups)
 
     return params, local_filter
-
-
-def human_count(n: int) -> str:
-    n = int(n or 0)
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
-    if n >= 1_000:
-        return f"{n // 1000}K"
-    return str(n)
-
-
-def human_size(b: int) -> str:
-    b = int(b or 0)
-    if b >= 1024 ** 3:
-        return f"{b / 1024 ** 3:.2f} GB"
-    if b >= 1024 ** 2:
-        return f"{b / 1024 ** 2:.2f} MB"
-    if b >= 1024:
-        return f"{b / 1024:.1f} KB"
-    return f"{b} B"
-
-
-def human_date(ts: int) -> str:
-    if not ts:
-        return "-"
-    d = datetime.fromtimestamp(int(ts))
-    return tr("date.format", day=d.day, month=months()[d.month - 1], year=d.year)
 
 
 def shorten(text: str, limit: int) -> str:
@@ -280,17 +252,6 @@ class ScrollFrame(tk.Frame):
         self.canvas.yview_moveto(0)
 
 
-def flat_button(parent, text, command, primary=False, **kw) -> tk.Label:
-    bg, hover, fg = (ACCENT, ACCENT_HOVER, ON_ACCENT) if primary else (BUTTON, BUTTON_HOVER, FG)
-    b = tk.Label(parent, text=text, bg=bg, fg=fg, cursor="hand2",
-                 font=(FONT, 10, "bold"), padx=12, pady=7, **kw)
-    b._colors = (bg, hover)
-    b.bind("<Enter>", lambda e: b.configure(bg=b._colors[1]))
-    b.bind("<Leave>", lambda e: b.configure(bg=b._colors[0]))
-    b.bind("<Button-1>", lambda e: command())
-    return b
-
-
 class Choice:
     def __init__(self, keys: list[str], prefix: str, default: str,
                  label: Optional[Callable[[str], str]] = None):
@@ -311,12 +272,6 @@ class Choice:
         self.var.set(self.label(key))
 
 
-def set_button_style(b: tk.Label, text: str, primary: bool):
-    bg, hover, fg = (ACCENT, ACCENT_HOVER, ON_ACCENT) if primary else (BUTTON, BUTTON_HOVER, FG)
-    b._colors = (bg, hover)
-    b.configure(text=text, bg=bg, fg=fg)
-
-
 class ModCard(tk.Frame):
     def __init__(self, parent, tab: "BrowseTab", mod: dict):
         super().__init__(parent, bg=CARD, highlightthickness=1, highlightbackground=BORDER,
@@ -325,10 +280,10 @@ class ModCard(tk.Frame):
         self.mod = mod
         open_page = lambda e: tab.open_details(mod)
 
-        holder = tk.Frame(self, width=IMG_W, height=IMG_H, bg="#0d0c0b")
+        holder = tk.Frame(self, width=IMG_W, height=IMG_H, bg=IMAGE_BG)
         holder.pack_propagate(False)
         holder.pack(fill="x")
-        self.img = tk.Label(holder, bg="#0d0c0b", fg=MUTED, text="Deep Rock Galactic",
+        self.img = tk.Label(holder, bg=IMAGE_BG, fg=MUTED, text="Deep Rock Galactic",
                             font=(FONT, 9), cursor="hand2")
         self.img.pack(fill="both", expand=True)
         self.img.bind("<Button-1>", open_page)
@@ -645,7 +600,7 @@ class BrowseTab(tk.Frame):
         if getattr(msg, "status", None) == 401 or "(401)" in msg:
             self.app.logout(expired=True)
             return
-        self.live_lbl.configure(text=tr("browse.error", msg=msg), fg="#e05a4f")
+        self.live_lbl.configure(text=tr("browse.error", msg=msg), fg=DANGER)
 
     def open_details(self, mod: dict):
         self.app.open_details(int(mod.get("game_id") or self.game_id or 0), int(mod["id"]), mod)
@@ -744,7 +699,7 @@ class BrowseTab(tk.Frame):
     def _update_header(self):
         self.count_lbl.configure(text=tr("browse.count", n=self.total))
         self.live_lbl.configure(text=tr("browse.live", time=f"{datetime.now():%H:%M}"),
-                                fg="#5fbf6a")
+                                fg=SUCCESS)
 
     def copy_link(self, mod: dict):
         url = mod_link(mod)

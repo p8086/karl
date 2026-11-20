@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .paths import CONFIG_DIR, CONFIG_FILE, MAIN_INSTALL
+from .paths import CONFIG_FILE, MAIN_INSTALL, read_json, write_json
 
 
 GAME_SUBPATH = Path("steamapps/common/Deep Rock Galactic/FSD/Content/Paks")
@@ -52,11 +51,9 @@ class Config:
     @classmethod
     def load(cls) -> "Config":
         cfg = cls()
-        if CONFIG_FILE.exists():
-            data = json.loads(CONFIG_FILE.read_text())
-            for k, v in data.items():
-                if hasattr(cfg, k):
-                    setattr(cfg, k, v)
+        for k, v in read_json(CONFIG_FILE, {}).items():
+            if hasattr(cfg, k):
+                setattr(cfg, k, v)
         if not cfg.paks_dir and cfg.active_install == MAIN_INSTALL:
             found = find_paks_dir()
             cfg.paks_dir = str(found) if found else ""
@@ -66,9 +63,7 @@ class Config:
     def save(self) -> None:
         self.ensure_installs()
         self.store_active()
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2))
-        os.chmod(CONFIG_FILE, 0o600)
+        write_json(CONFIG_FILE, asdict(self), mode=0o600)
 
     def ensure_installs(self) -> None:
         self.installs = [dict(i) for i in self.installs if isinstance(i, dict) and i.get("id")]

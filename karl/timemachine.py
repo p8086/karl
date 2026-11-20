@@ -6,7 +6,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, TYPE_CHECKING
 
 from . import paths
 from .entry import ModEntry
@@ -34,11 +34,10 @@ class TimeMachine:
         self.blob_dir = blob_dir
         self.snapshots: list[dict] = []
         self._hash_cache: dict[tuple, str] = {}
-        if index_file.exists():
-            try:
-                self.snapshots = json.loads(index_file.read_text(encoding="utf-8"))
-            except ValueError:
-                self.snapshots = []
+        try:
+            self.snapshots = paths.read_json(index_file, [])
+        except ValueError:
+            self.snapshots = []
 
     def _blob(self, pak: Path) -> str:
         st = pak.stat()
@@ -106,9 +105,7 @@ class TimeMachine:
             self._save()
 
     def _save(self) -> None:
-        self.index_file.parent.mkdir(parents=True, exist_ok=True)
-        self.index_file.write_text(json.dumps(self.snapshots, indent=1, ensure_ascii=False),
-                                   encoding="utf-8")
+        paths.write_json(self.index_file, self.snapshots)
 
     def _prune_blobs(self) -> None:
         used = {p["hash"] for s in self.snapshots for m in s["mods"] for p in m["paks"]}

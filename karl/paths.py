@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
+from typing import Any, Optional
 
 from . import APP_NAME
 
@@ -35,3 +37,20 @@ def use_install(install_id: str) -> None:
     SNAPSHOTS_FILE = cfg_dir / "istantanee.json"
     SNAPSHOT_BLOBS = cache_dir / "istantanee"
     MODS_CACHE = cache_dir
+
+
+def read_json(path: Path, default: Any = None) -> Any:
+    path = Path(path)
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: Path, data: Any, mode: Optional[int] = None) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+    if mode is not None:
+        os.chmod(tmp, mode)
+    tmp.replace(path)

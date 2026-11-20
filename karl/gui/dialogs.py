@@ -8,13 +8,13 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Optional, TYPE_CHECKING
 
 from .. import APP_TITLE, VERSION, diagnostics
-from ..browse import flat_button, human_size
 from ..details import html_to_text
-from ..i18n import tr
+from ..i18n import human_size, tr
 from ..log import log
-from ..theme import ACCENT, BG, BORDER, FG, FONT, MUTED, PANEL
+from ..theme import ACCENT, BG, BORDER, DANGER, FG, FONT, MUTED, PANEL, SUCCESS
 from ..ui import px
-from .common import TOKEN_PAGE, fill_text, safe_grab, text_box
+from ..widgets import check_button, fill_text, flat_button, text_box
+from .common import TOKEN_PAGE, safe_grab
 
 if TYPE_CHECKING:
     from .app import App
@@ -46,7 +46,7 @@ class LoginDialog(tk.Toplevel):
         self.entry.pack(fill="x")
         self.entry.bind("<FocusIn>", self._paste_if_token)
         self.entry.bind("<Return>", lambda e: self.submit())
-        self.msg = tk.Label(f, text="", bg=BG, fg="#e05a4f", font=(FONT, 9), wraplength=520,
+        self.msg = tk.Label(f, text="", bg=BG, fg=DANGER, font=(FONT, 9), wraplength=520,
                             justify="left")
         self.msg.pack(anchor="w", pady=(6, 0))
 
@@ -82,7 +82,7 @@ class LoginDialog(tk.Toplevel):
 
         def fail(err):
             text = tr("login.read_failed", msg=err) if getattr(err, "read_failed", False) else err
-            self.msg.configure(text=text, fg="#e05a4f")
+            self.msg.configure(text=text, fg=DANGER)
 
         self.app.submit(lambda: self.app.client(token).check_access(), ok, fail)
 
@@ -105,7 +105,7 @@ class DiagnosticsDialog(tk.Toplevel):
         sb.pack(side="right", fill="y")
         self.text.pack(side="left", fill="both", expand=True)
         self.text.configure(yscrollcommand=sb.set)
-        for level, color in (("OK", "#6cc070"), ("WARN", ACCENT), ("FAIL", "#e05a4f")):
+        for level, color in (("OK", SUCCESS), ("WARN", ACCENT), ("FAIL", DANGER)):
             self.text.tag_configure(level, foreground=color)
         btns = tk.Frame(self, bg=BG)
         btns.pack(fill="x")
@@ -168,9 +168,7 @@ class WhatsNewDialog(tk.Toplevel):
         bottom = tk.Frame(self, bg=BG)
         bottom.pack(fill="x", pady=(10, 0))
         self.hide_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(bottom, text=tr("news.dont_show"), variable=self.hide_var, bg=BG, fg=FG,
-                       selectcolor=PANEL, activebackground=BG, activeforeground=FG).pack(
-            side="left")
+        check_button(bottom, tr("news.dont_show"), self.hide_var).pack(side="left")
         ttk.Button(bottom, text=tr("details.close"), command=self.close).pack(side="right")
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.render()
@@ -241,9 +239,7 @@ class CacheDialog(tk.Toplevel):
             if cleanable:
                 var = tk.BooleanVar(value=key != "previous")
                 self.vars[key] = var
-                tk.Checkbutton(f, text=tr(f"cache.{key}"), variable=var, bg=BG, fg=FG,
-                               selectcolor=PANEL, activebackground=BG, activeforeground=FG,
-                               anchor="w").grid(row=row, column=0, sticky="w")
+                check_button(f, tr(f"cache.{key}"), var).grid(row=row, column=0, sticky="w")
             else:
                 tk.Label(f, text=tr(f"cache.{key}"), bg=BG, fg=MUTED, anchor="w",
                          padx=24).grid(row=row, column=0, sticky="w")

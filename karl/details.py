@@ -6,12 +6,13 @@ import tkinter as tk
 import webbrowser
 from html.parser import HTMLParser
 from tkinter import ttk
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, TYPE_CHECKING
 
-from .i18n import tr
+from .i18n import human_count, human_date, human_size, tr
 from .modio import dependency_info, game_versions_of, mod_name
+from .theme import ACCENT, BG, FG, FONT, IMAGE_BG, MUTED
 from .ui import px
-from .theme import ACCENT, BG, BORDER, FG, FONT, MUTED, PANEL
+from .widgets import fill_text, text_box
 
 if TYPE_CHECKING:
     from .gui import App
@@ -56,34 +57,6 @@ def html_to_text(raw: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def _readonly_text(parent, height: int = 12) -> tk.Text:
-    box = tk.Frame(parent, bg=BORDER, padx=1, pady=1)
-    box.pack(fill="both", expand=True)
-    t = tk.Text(box, height=height, wrap="word", bg=PANEL, fg=FG, relief="flat", bd=0,
-                padx=10, pady=8, font=(FONT, 10), insertbackground=FG,
-                highlightthickness=0)
-    sb = ttk.Scrollbar(box, orient="vertical", command=t.yview)
-    sb.pack(side="right", fill="y")
-    t.pack(side="left", fill="both", expand=True)
-    t.configure(yscrollcommand=sb.set)
-    t.tag_configure("title", font=(FONT, 10, "bold"), foreground=ACCENT)
-    t.tag_configure("muted", foreground=MUTED)
-    t.tag_configure("warn", foreground=ACCENT)
-    t.configure(state="disabled")
-    return t
-
-
-def _fill(t: tk.Text, chunks: list[tuple[str, str]]) -> None:
-    t.configure(state="normal")
-    t.delete("1.0", "end")
-    for text, tag in chunks:
-        if tag:
-            t.insert("end", text, tag)
-        else:
-            t.insert("end", text)
-    t.configure(state="disabled")
-
-
 class ModDetails(tk.Toplevel):
     def __init__(self, app: "App", game_id: int, mod_id: int, mod: Optional[dict] = None,
                  name: str = ""):
@@ -102,10 +75,10 @@ class ModDetails(tk.Toplevel):
 
         top = tk.Frame(self, bg=BG, padx=16, pady=14)
         top.pack(fill="x")
-        holder = tk.Frame(top, width=px(IMG_W), height=px(IMG_H), bg="#0d0c0b")
+        holder = tk.Frame(top, width=px(IMG_W), height=px(IMG_H), bg=IMAGE_BG)
         holder.pack_propagate(False)
         holder.pack(side="left")
-        self.img = tk.Label(holder, bg="#0d0c0b", fg=MUTED, text="Deep Rock Galactic",
+        self.img = tk.Label(holder, bg=IMAGE_BG, fg=MUTED, text="Deep Rock Galactic",
                             font=(FONT, 9))
         self.img.pack(fill="both", expand=True)
         info = tk.Frame(top, bg=BG, padx=16)
@@ -151,7 +124,7 @@ class ModDetails(tk.Toplevel):
         for key in ("description", "versions", "deps"):
             page = tk.Frame(nb, bg=BG, pady=6)
             nb.add(page, text=tr(f"details.tab_{key}"))
-            pages[key] = _readonly_text(page)
+            pages[key] = text_box(page)
         self.desc_text = pages["description"]
         self.files_text = pages["versions"]
         self.deps_text = pages["deps"]
@@ -179,9 +152,9 @@ class ModDetails(tk.Toplevel):
 
     def load(self):
         if not self.app.config_.logged_in:
-            _fill(self.desc_text, [(tr("details.login"), "muted")])
+            fill_text(self.desc_text, [(tr("details.login"), "muted")])
             return
-        _fill(self.desc_text, [(tr("details.loading"), "muted")])
+        fill_text(self.desc_text, [(tr("details.loading"), "muted")])
         game_id, mod_id, have = self.game_id, self.mod_id, dict(self.mod)
 
         def work():
@@ -201,7 +174,7 @@ class ModDetails(tk.Toplevel):
 
     def _failed(self, msg: str):
         if self.winfo_exists():
-            _fill(self.desc_text, [(tr("details.error", msg=msg), "warn")])
+            fill_text(self.desc_text, [(tr("details.error", msg=msg), "error")])
 
     def _loaded(self, res):
         if not self.winfo_exists():
@@ -216,7 +189,6 @@ class ModDetails(tk.Toplevel):
         self.render()
 
     def render(self):
-        from .browse import human_count, human_date, human_size
         m = self.mod
         name = mod_name(m) or self.name_lbl.cget("text") or str(self.mod_id)
         self.title(tr("details.title", name=name))
@@ -248,7 +220,7 @@ class ModDetails(tk.Toplevel):
         self._render_gallery(thumbs)
         desc = html_to_text(m.get("description") or "") or m.get("summary") or ""
         if m.get("id") or desc:
-            _fill(self.desc_text, [(desc or tr("details.no_description"),
+            fill_text(self.desc_text, [(desc or tr("details.no_description"),
                                     "" if desc else "muted")])
         self._render_files()
         self._render_deps()
@@ -322,7 +294,7 @@ class ModDetails(tk.Toplevel):
         row.pack(fill="x")
         for img in images:
             original = img.get("original") or ""
-            lbl = tk.Label(row, bg="#0d0c0b", width=THUMB_W // 8, height=THUMB_H // 18,
+            lbl = tk.Label(row, bg=IMAGE_BG, width=THUMB_W // 8, height=THUMB_H // 18,
                            cursor="hand2")
             lbl.pack(side="left", padx=(0, 6))
             if original:
@@ -338,10 +310,9 @@ class ModDetails(tk.Toplevel):
             label.configure(image=im, text="", width=px(THUMB_W), height=px(THUMB_H))
 
     def _render_files(self):
-        from .browse import human_date, human_size
         if not self.files:
             if self.mod.get("id"):
-                _fill(self.files_text, [(tr("details.no_versions"), "muted")])
+                fill_text(self.files_text, [(tr("details.no_versions"), "muted")])
             return
         e = self.app.lib.mods.get(self.mod_id)
         chunks: list[tuple[str, str]] = []
@@ -353,13 +324,13 @@ class ModDetails(tk.Toplevel):
                            + human_size(f.get("filesize", 0)) + "\n", "muted"))
             log = html_to_text(f.get("changelog") or "")
             chunks.append(((log or tr("details.no_changelog")) + "\n\n", "" if log else "muted"))
-        _fill(self.files_text, chunks)
+        fill_text(self.files_text, chunks)
 
     def _render_deps(self):
         if self.deps is None:
             return
         if not self.deps:
-            _fill(self.deps_text, [(tr("details.no_deps"), "muted")])
+            fill_text(self.deps_text, [(tr("details.no_deps"), "muted")])
             return
         lib = self.app.lib
         folder = lib.folders.get(lib.active_folder, {})
@@ -371,4 +342,4 @@ class ModDetails(tk.Toplevel):
                            + "\n", "muted"))
             if d.get("url"):
                 chunks.append(("   " + d["url"] + "\n", "muted"))
-        _fill(self.deps_text, chunks)
+        fill_text(self.deps_text, chunks)

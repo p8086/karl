@@ -6,11 +6,9 @@ import tkinter as tk
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from tkinter import ttk
 
 from .. import GITHUB_REPO
 from ..config import Config
-from ..theme import ACCENT, BORDER, FG, FONT, MUTED, PANEL
 
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
@@ -66,26 +64,3 @@ def format_when(iso: str) -> str:
     except ValueError:
         return iso
 
-def text_box(parent, height: int = 14) -> tk.Text:
-    box = tk.Frame(parent, bg=BORDER, padx=1, pady=1)
-    box.pack(fill="both", expand=True)
-    t = tk.Text(box, wrap="word", bg=PANEL, fg=FG, relief="flat", bd=0, padx=10, pady=8,
-                font=(FONT, 10), height=height, highlightthickness=0)
-    sb = ttk.Scrollbar(box, orient="vertical", command=t.yview)
-    sb.pack(side="right", fill="y")
-    t.pack(side="left", fill="both", expand=True)
-    t.configure(yscrollcommand=sb.set)
-    t.tag_configure("title", font=(FONT, 10, "bold"), foreground=ACCENT)
-    t.tag_configure("muted", foreground=MUTED)
-    t.tag_configure("warn", foreground="#e05a4f")
-    return t
-
-def fill_text(t: tk.Text, chunks: list[tuple[str, str]]) -> None:
-    t.configure(state="normal")
-    t.delete("1.0", "end")
-    for text, tag in chunks:
-        if tag:
-            t.insert("end", text, tag)
-        else:
-            t.insert("end", text)
-    t.configure(state="disabled")

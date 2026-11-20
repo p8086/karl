@@ -15,8 +15,8 @@ from .modio import ModioError
 
 class FoldersMixin:
     def _load_folders(self) -> None:
-        if paths.FOLDERS_FILE.exists():
-            data = json.loads(paths.FOLDERS_FILE.read_text(encoding="utf-8"))
+        data = paths.read_json(paths.FOLDERS_FILE)
+        if data is not None:
             self.folders = {name: {int(k): bool(v) for k, v in mods.items()}
                             for name, mods in data.get("cartelle", {}).items()}
             self.active_folder = data.get("attiva", "")
@@ -48,13 +48,12 @@ class FoldersMixin:
                 del f[i]
 
     def _save_folders(self) -> None:
-        paths.FOLDERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        paths.FOLDERS_FILE.write_text(json.dumps({
+        paths.write_json(paths.FOLDERS_FILE, {
             "versione": 2,
             "attiva": self.active_folder,
             "cartelle": {name: {str(k): v for k, v in mods.items()}
                          for name, mods in self.folders.items()},
-        }, indent=2, ensure_ascii=False), encoding="utf-8")
+        })
 
     def folder_mods(self) -> list[ModEntry]:
         folder = self.folders.get(self.active_folder, {})
@@ -203,16 +202,13 @@ class FoldersMixin:
                    for n, f in self.folders.items()]
         data = {"format": self.PROFILE_FORMAT, "version": 1, "active": self.active_folder,
                 "folders": folders, "mods": mods}
-        path = Path(path)
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
+        paths.write_json(path, data)
         return len(skipped)
 
     @classmethod
     def read_profile(cls, path: Path) -> dict:
         try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            data = paths.read_json(path)
             if data.get("format") != cls.PROFILE_FORMAT:
                 raise ValueError
             mods = {int(k): v for k, v in data["mods"].items()}

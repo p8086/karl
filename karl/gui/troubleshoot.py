@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING
 
 from ..bisect import Bisect
 from ..i18n import tr
-from ..theme import ACCENT, BG, FG, FONT, MUTED
+from ..theme import ACCENT, BG, DANGER, FG, FONT, MUTED
 from ..ui import px
-from .common import fill_text, format_when, text_box
+from ..widgets import fill_text, text_box
+from .common import format_when
 from .timemachine import history_text
 
 if TYPE_CHECKING:
@@ -25,7 +26,7 @@ class CrashDialog(tk.Toplevel):
         self.configure(bg=BG, padx=16, pady=14)
         self.geometry(f"{px(640)}x{px(480)}")
         self.transient(app)
-        tk.Label(self, text=tr("crash.title"), bg=BG, fg="#e05a4f", font=(FONT, 13, "bold"),
+        tk.Label(self, text=tr("crash.title"), bg=BG, fg=DANGER, font=(FONT, 13, "bold"),
                  anchor="w").pack(fill="x")
         when = datetime.fromtimestamp(found.get("time") or time.time()).strftime("%H:%M")
         kind = tr("crash.kind_ue4ss") if found.get("ue4ss") else tr("crash.kind_game")
@@ -38,7 +39,7 @@ class CrashDialog(tk.Toplevel):
         chunks: list[tuple[str, str]] = []
         if found.get("detail"):
             chunks.append((tr("crash.error") + "\n", "title"))
-            chunks.append((found["detail"] + "\n\n", "warn"))
+            chunks.append((found["detail"] + "\n\n", "error"))
         chunks.append((tr("crash.changes") + "\n", "title"))
         if changes:
             for e in changes[-20:]:
@@ -99,7 +100,7 @@ class BisectDialog(tk.Toplevel):
         self.progress = tk.Label(self, text="", bg=BG, fg=ACCENT, font=(FONT, 10, "bold"),
                                  anchor="w")
         self.progress.pack(fill="x")
-        self.alert = tk.Label(self, text="", bg=BG, fg="#e05a4f", font=(FONT, 9, "bold"),
+        self.alert = tk.Label(self, text="", bg=BG, fg=DANGER, font=(FONT, 9, "bold"),
                               anchor="w", justify="left", wraplength=px(620))
         self.alert.pack(fill="x")
         self.text = text_box(self, height=12)

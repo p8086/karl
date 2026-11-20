@@ -4,6 +4,7 @@ import json
 import locale
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 LOCALES_DIR = Path(__file__).resolve().parent / "locales"
@@ -109,3 +110,30 @@ def months() -> list[str]:
 
 def language_name(code: str) -> str:
     return dict(LANGUAGES).get(code, code)
+
+
+def human_count(n: int) -> str:
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n // 1000}K"
+    return str(n)
+
+
+def human_size(b: int) -> str:
+    b = int(b or 0)
+    if b >= 1024 ** 3:
+        return f"{b / 1024 ** 3:.2f} GB"
+    if b >= 1024 ** 2:
+        return f"{b / 1024 ** 2:.2f} MB"
+    if b >= 1024:
+        return f"{b / 1024:.1f} KB"
+    return f"{b} B"
+
+
+def human_date(ts: int) -> str:
+    if not ts:
+        return "-"
+    d = datetime.fromtimestamp(int(ts))
+    return tr("date.format", day=d.day, month=months()[d.month - 1], year=d.year)

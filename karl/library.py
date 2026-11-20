@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-import json
 import re
 import shutil
 import struct
@@ -40,11 +39,10 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         self.time_machine = TimeMachine(self, paths.SNAPSHOTS_FILE, paths.SNAPSHOT_BLOBS)
 
     def load(self) -> None:
-        if paths.LIBRARY_FILE.exists():
-            for raw in json.loads(paths.LIBRARY_FILE.read_text()):
-                e = ModEntry(**{k: v for k, v in raw.items() if k in ENTRY_KEYS})
-                e.name = html.unescape(e.name)
-                self.mods[e.mod_id] = e
+        for raw in paths.read_json(paths.LIBRARY_FILE, []):
+            e = ModEntry(**{k: v for k, v in raw.items() if k in ENTRY_KEYS})
+            e.name = html.unescape(e.name)
+            self.mods[e.mod_id] = e
         self._load_folders()
 
     def save(self) -> None:
@@ -57,8 +55,7 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
             pass
 
     def _save_list(self) -> None:
-        paths.LIBRARY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        paths.LIBRARY_FILE.write_text(json.dumps([asdict(m) for m in self.mods.values()], indent=2))
+        paths.write_json(paths.LIBRARY_FILE, [asdict(m) for m in self.mods.values()])
 
     @property
     def client(self) -> ModioClient:

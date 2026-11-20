@@ -296,10 +296,11 @@ karl/gui/timemachine.py  time machine and history window
 karl/gui/troubleshoot.py crash report and problem mod search windows
 karl/gui/common.py       shared GUI helpers
 karl/ui.py               interface size
+karl/widgets.py          shared widgets: buttons, checkboxes, text boxes
 karl/single.py           single instance
 karl/log.py              log file
 karl/theme.py            colors and fonts
-karl/i18n.py             translations (karl/locales/*.json)
+karl/i18n.py             translations (karl/locales/*.json), sizes and dates
 karl/cli.py              command line
 tests/                   offline tests: test_core.py, test_browse.py, test_integration.py
 packaging/               install.sh for the Linux package

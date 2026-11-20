@@ -6,25 +6,18 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from . import VERSION, game, integration, proton
 from .entry import SOURCE_FILE
+from .i18n import human_size
 from .log import LOG_FILE
-from .modio import ModioError, mask_token
+from .modio import mask_token
 
 if TYPE_CHECKING:
     from .library import Library
 
 OK, WARN, FAIL, INFO = "OK", "WARN", "FAIL", "INFO"
-
-
-def _size(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n} B"
 
 
 def _writable(folder: Path) -> bool:
@@ -40,8 +33,20 @@ def _writable(folder: Path) -> bool:
 def run(lib: "Library", network: bool = True) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     add = lambda level, text: out.append((level, text))
-    cfg = lib.config
+    _system(lib, add)
+    paks = _paks_folder(lib.config.paks_dir, add)
+    _game(lib, add)
+    _mods(lib, paks, add)
+    _requirements(lib, add)
+    if paks is not None:
+        _game_folder(lib, paks, add)
+    _modio(lib, network, add)
+    _disk_and_log(lib, add)
+    return out
 
+
+def _system(lib: "Library", add) -> None:
+    cfg = lib.config
     add(INFO, f"Karl {VERSION} ({'exe' if getattr(sys, 'frozen', False) else 'source'})")
     add(INFO, f"System: {platform.platform()} · Python {platform.python_version()}")
     add(INFO, f"Language: {cfg.language} · Interface size: {int(cfg.ui_scale * 100)}% · "
@@ -50,54 +55,66 @@ def run(lib: "Library", network: bool = True) -> list[tuple[str, str]]:
         names = ", ".join(i.get("name", "?") for i in cfg.installs)
         add(INFO, f"Installations: {names} · active: {cfg.current_install().get('name')}")
 
-    paks = None
-    if not cfg.paks_dir:
-        add(FAIL, "Paks folder: not set")
-    else:
-        p = Path(cfg.paks_dir).expanduser()
-        if not p.is_dir():
-            add(FAIL, f"Paks folder: missing ({p})")
-        else:
-            paks = p
-            add(OK, f"Paks folder: {p}")
-            if (p / "FSD-WindowsNoEditor.pak").is_file():
-                add(OK, "Game files: FSD-WindowsNoEditor.pak found")
-            else:
-                add(WARN, "Game files: FSD-WindowsNoEditor.pak not found in the Paks folder")
-            add(OK if _writable(p) else FAIL,
-                "Paks folder writable" if _writable(p) else "Paks folder: no write permission")
 
+def _paks_folder(paks_dir: str, add) -> Optional[Path]:
+    if not paks_dir:
+        add(FAIL, "Paks folder: not set")
+        return None
+    p = Path(paks_dir).expanduser()
+    if not p.is_dir():
+        add(FAIL, f"Paks folder: missing ({p})")
+        return None
+    add(OK, f"Paks folder: {p}")
+    if (p / "FSD-WindowsNoEditor.pak").is_file():
+        add(OK, "Game files: FSD-WindowsNoEditor.pak found")
+    else:
+        add(WARN, "Game files: FSD-WindowsNoEditor.pak not found in the Paks folder")
+    if _writable(p):
+        add(OK, "Paks folder writable")
+    else:
+        add(FAIL, "Paks folder: no write permission")
+    return p
+
+
+def _game(lib: "Library", add) -> None:
     build = lib.game_build()
     add(INFO, f"Game build: {build or 'unknown'} · running: {'yes' if game.is_running() else 'no'}")
-    if cfg.vanilla_active:
+    if lib.config.vanilla_active:
         add(WARN, "Playing without mods is active: mods are out of the game until DRG closes")
 
+
+def _names(entries) -> str:
+    return ", ".join(e.name for e in list(entries)[:15])
+
+
+def _mods(lib: "Library", paks: Optional[Path], add) -> None:
     folder_mods = lib.folder_mods()
     on = [e for e in folder_mods if e.enabled]
     add(INFO, f"Mods: {len(lib.mods)} in total · folder '{lib.active_folder}': "
               f"{len(folder_mods)} ({len(on)} on) · folders: {len(lib.folders)}")
-    no_cache = [e.name for e in lib.mods.values()
+    no_cache = [e for e in lib.mods.values()
                 if not e.cached_paks or not all(Path(c).is_file() for c in e.cached_paks)]
     if no_cache:
-        add(WARN, "Mods without downloaded files: " + ", ".join(no_cache[:15]))
-    if paks is not None and not cfg.vanilla_active:
-        missing = [e.name for e in on if not e.installed_paks
+        add(WARN, "Mods without downloaded files: " + _names(no_cache))
+    if paks is not None and not lib.config.vanilla_active:
+        missing = [e for e in on if not e.installed_paks
                    or any(not lib._installed_path(n).is_file() for n in e.installed_paks)]
         if missing:
-            add(FAIL, "Mods on but not in the game (press Install and save): "
-                      + ", ".join(missing[:15]))
+            add(FAIL, "Mods on but not in the game (press Install and save): " + _names(missing))
         else:
             add(OK, "All mods turned on are in the game")
-        reorder = [e.name for e in on if lib.needs_reorder(e)]
+        reorder = [e for e in on if lib.needs_reorder(e)]
         if reorder:
-            add(WARN, "Load order not applied yet for: " + ", ".join(reorder[:15]))
-    files = [e.name for e in lib.mods.values() if e.source == SOURCE_FILE]
+            add(WARN, "Load order not applied yet for: " + _names(reorder))
+    files = [e for e in lib.mods.values() if e.source == SOURCE_FILE]
     if files:
-        add(INFO, "Mods from .pak files: " + ", ".join(files[:15]))
-    removed = [e.name for e in lib.mods.values() if e.removed]
+        add(INFO, "Mods from .pak files: " + _names(files))
+    removed = [e for e in lib.mods.values() if e.removed]
     if removed:
-        add(WARN, "Removed from mod.io (Karl keeps the copy): " + ", ".join(removed[:15]))
+        add(WARN, "Removed from mod.io (Karl keeps the copy): " + _names(removed))
 
+
+def _requirements(lib: "Library", add) -> None:
     deps = lib.missing_dependencies()
     if deps:
         add(WARN, "Missing required mods: " + "; ".join(
@@ -113,55 +130,56 @@ def run(lib: "Library", network: bool = True) -> list[tuple[str, str]]:
     else:
         add(OK, "Conflicts: none")
 
-    if paks is not None:
-        foreign = lib.foreign_loader_files()
-        if foreign:
-            add(WARN, "Other mod loaders found: " + ", ".join(str(f.name) for f in foreign))
-        st = integration.status(paks)
-        level = OK if st == "ok" else WARN
-        add(level, f"Blueprint mod support (UE4SS + Karl loader): {st}")
-        if proton.needed():
-            pfx = proton.prefix_for(paks)
-            ue = integration.ue4ss_dir(integration.win64_dir(paks))
-            if ue is not None:
-                ini = ue / "UE4SS-settings.ini"
-                add(WARN if integration.proton_hooks_on(ini) else OK,
-                    "Proton: UE4SS hooks " + ("ON (DRG can crash at startup)"
-                                              if integration.proton_hooks_on(ini) else "off"))
-            if pfx is None:
-                add(WARN, "Proton: prefix not found (start DRG once with Steam)")
-            else:
-                add(OK if proton.has_override(pfx) else WARN,
-                    "Proton: dwmapi override " + ("set" if proton.has_override(pfx) else "missing"))
 
-    if not cfg.token:
-        add(WARN, "mod.io: not signed in")
+def _game_folder(lib: "Library", paks: Path, add) -> None:
+    foreign = lib.foreign_loader_files()
+    if foreign:
+        add(WARN, "Other mod loaders found: " + ", ".join(str(f.name) for f in foreign))
+    st = integration.status(paks)
+    add(OK if st == "ok" else WARN, f"Blueprint mod support (UE4SS + Karl loader): {st}")
+    if not proton.needed():
+        return
+    ue = integration.ue4ss_dir(integration.win64_dir(paks))
+    if ue is not None:
+        hooks = integration.proton_hooks_on(ue / "UE4SS-settings.ini")
+        add(WARN if hooks else OK,
+            "Proton: UE4SS hooks " + ("ON (DRG can crash at startup)" if hooks else "off"))
+    pfx = proton.prefix_for(paks)
+    if pfx is None:
+        add(WARN, "Proton: prefix not found (start DRG once with Steam)")
+    elif proton.has_override(pfx):
+        add(OK, "Proton: dwmapi override set")
     else:
-        add(INFO, f"mod.io token: {mask_token(cfg.token)}")
-        if network:
-            try:
-                me = lib.client.me()
-                add(OK, f"mod.io: signed in as {me.get('username') or me.get('name_id') or '?'}")
-            except ModioError as err:
-                add(FAIL, f"mod.io: {err}")
-            except Exception as err:
-                add(FAIL, f"mod.io: {err}")
+        add(WARN, "Proton: dwmapi override missing")
 
+
+def _modio(lib: "Library", network: bool, add) -> None:
+    token = lib.config.token
+    if not token:
+        add(WARN, "mod.io: not signed in")
+        return
+    add(INFO, f"mod.io token: {mask_token(token)}")
+    if network:
+        try:
+            me = lib.client.me()
+            add(OK, f"mod.io: signed in as {me.get('username') or me.get('name_id') or '?'}")
+        except Exception as err:
+            add(FAIL, f"mod.io: {err}")
+
+
+def _disk_and_log(lib: "Library", add) -> None:
     try:
         rep = lib.cache_report()
-        add(INFO, "Disk: " + ", ".join(f"{k} {_size(v)}" for k, v in rep.items()))
+        add(INFO, "Disk: " + ", ".join(f"{k} {human_size(v)}" for k, v in rep.items()))
     except Exception as err:
         add(WARN, f"Disk: {err}")
-
     add(INFO, f"Log file: {LOG_FILE}")
     try:
         lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
-        tail = [ln for ln in lines if "WARNING" in ln or "ERROR" in ln][-10:]
-        for ln in tail:
-            add(INFO, "log: " + ln)
     except OSError:
-        pass
-    return out
+        return
+    for ln in [ln for ln in lines if "WARNING" in ln or "ERROR" in ln][-10:]:
+        add(INFO, "log: " + ln)
 
 
 def format_report(items: list[tuple[str, str]]) -> str:

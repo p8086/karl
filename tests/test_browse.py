@@ -21,7 +21,7 @@ fake_tk.install()
 
 from PIL import Image
 
-from karl import browse, config, gui, modio, paths
+from karl import browse, config, gui, i18n, modio, paths
 from karl.browse import LIB_ALL, LIB_NOT_SUB, LIB_SUB, build_query
 from karl.config import Config
 from karl.library import Library
@@ -190,13 +190,13 @@ class QueryTests(unittest.TestCase):
         self.assertNotIn("id-not-in", self.q(lib=LIB_NOT_SUB, subs=set())[0])
 
     def test_formatting(self):
-        self.assertEqual(browse.human_count(3_600_000), "3.6M")
-        self.assertEqual(browse.human_count(2_000_000), "2M")
-        self.assertEqual(browse.human_count(1_500), "1K")
-        self.assertEqual(browse.human_count(914), "914")
-        self.assertEqual(browse.human_size(1_761_607), "1.68 MB")
-        self.assertEqual(browse.human_size(462_029), "451.2 KB")
-        self.assertIn("giu 2024", browse.human_date(1718236800))
+        self.assertEqual(i18n.human_count(3_600_000), "3.6M")
+        self.assertEqual(i18n.human_count(2_000_000), "2M")
+        self.assertEqual(i18n.human_count(1_500), "1K")
+        self.assertEqual(i18n.human_count(914), "914")
+        self.assertEqual(i18n.human_size(1_761_607), "1.68 MB")
+        self.assertEqual(i18n.human_size(462_029), "451.2 KB")
+        self.assertIn("giu 2024", i18n.human_date(1718236800))
         self.assertTrue(browse.shorten("a " * 200, 20).endswith("…"))
 
 
@@ -913,11 +913,9 @@ class KarlInstallTests(GuiBase):
 
 class LanguageTests(GuiBase):
     def tearDown(self):
-        from karl import i18n
         i18n.set_language("it")
 
     def test_match_and_fallback(self):
-        from karl import i18n
         cases = {"it_IT.UTF-8": "it", "pt_PT": "pt-BR", "es_MX": "es-419", "es_ES": "es-ES",
                  "es": "es-ES", "zh_TW": "zh-TW", "zh_HK": "zh-TW", "zh_CN": "zh-CN",
                  "de_AT": "de", "sv_SE": "en", "": "en", "C": "en", "uk_UA": "uk"}
@@ -932,10 +930,9 @@ class LanguageTests(GuiBase):
         finally:
             i18n._cache.pop("en")
         self.assertEqual(len(i18n.months()), 12)
-        self.assertEqual(browse.human_date(1718236800), "Jun 13, 2024")
+        self.assertEqual(i18n.human_date(1718236800), "Jun 13, 2024")
 
     def test_switch_language_live(self):
-        from karl import i18n
         Config(token=FakeModio.valid_token, username="giuseppe8086").save()
         app = gui.App()
         pump(app, 80)
@@ -966,11 +963,9 @@ class LanguageTests(GuiBase):
 
 class AllLanguagesTest(GuiBase):
     def tearDown(self):
-        from karl import i18n
         i18n.set_language("it")
 
     def test_every_language_builds(self):
-        from karl import i18n
         Config(token=FakeModio.valid_token, username="giuseppe8086").save()
         app = gui.App()
         pump(app, 80)

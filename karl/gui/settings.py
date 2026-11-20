@@ -10,12 +10,13 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import TYPE_CHECKING
 
 from .. import APP_TITLE, i18n, tray as karl_tray, ui
-from ..browse import Choice, flat_button, human_date, set_button_style
-from ..config import find_paks_dir
-from ..i18n import tr
+from ..browse import Choice
+from ..config import Config, find_paks_dir
+from ..i18n import human_date, tr
 from ..modio import mask_token, token_expiry
 from ..paths import install_dirs
-from ..theme import ACCENT, BG, BORDER, FG, FONT, MUTED, PANEL
+from ..theme import ACCENT, BG, BORDER, DANGER, FG, FONT, MUTED, PANEL, SUCCESS
+from ..widgets import check_button, flat_button, set_button_style
 from .common import TOKEN_PAGE, remember_me
 from .dialogs import CacheDialog, LoginDialog
 
@@ -42,6 +43,16 @@ class SettingsDialog(tk.Toplevel):
         self.show_token = False
         self._build_token_section()
 
+        self._build_language(f, cfg)
+        self._build_installs(f, cfg)
+        self._build_misc(f, cfg)
+        self._build_maintenance(f, cfg)
+        self._build_tools(f)
+
+        ttk.Button(f, text=tr("settings.save"), style="Accent.TButton", command=self.save).grid(
+            row=19, column=1, sticky="e", pady=(16, 0))
+
+    def _build_language(self, f: ttk.Frame, cfg: Config) -> None:
         ttk.Label(f, text=tr("settings.language")).grid(row=1, column=0, sticky="w")
         self.language = Choice([i18n.AUTO] + i18n.CODES, "", cfg.language or i18n.AUTO,
                                label=lambda c: tr("settings.language_auto") if c == i18n.AUTO
@@ -49,6 +60,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Combobox(f, textvariable=self.language.var, state="readonly", width=34,
                      values=self.language.labels(), height=18).grid(row=2, column=0, sticky="w")
 
+    def _build_installs(self, f: ttk.Frame, cfg: Config) -> None:
         cfg.ensure_installs()
         cfg.store_active()
         self.installs = [dict(i) for i in cfg.installs]
@@ -77,6 +89,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(bf, text=tr("settings.detect"), command=self.detect).pack(side="left", padx=(4, 0))
         self._render_installs()
 
+    def _build_misc(self, f: ttk.Frame, cfg: Config) -> None:
         misc = ttk.Frame(f)
         misc.grid(row=7, column=0, columnspan=2, sticky="w", pady=(12, 0))
         ttk.Label(misc, text=tr("settings.refresh")).grid(row=0, column=0, sticky="w")
@@ -90,6 +103,7 @@ class SettingsDialog(tk.Toplevel):
                      values=[ui.label(s) for s in ui.SCALES]).grid(row=1, column=1, sticky="w",
                                                                    padx=(24, 0))
 
+    def _build_maintenance(self, f: ttk.Frame, cfg: Config) -> None:
         tk.Label(f, text=tr("settings.maintenance"), bg=BG, fg=ACCENT,
                  font=(FONT, 11, "bold")).grid(row=9, column=0, sticky="w", pady=(16, 2))
         self.auto_updates = tk.BooleanVar(value=cfg.auto_check_updates)
@@ -108,10 +122,7 @@ class SettingsDialog(tk.Toplevel):
                  (self.tray_icon, "settings.tray_icon", 0),
                  (self.close_to_tray, "settings.close_to_tray", 24),
                  (self.whats_new, "settings.whats_new", 0)), 10):
-            checks[key] = tk.Checkbutton(f, text=tr(key), variable=var, bg=BG, fg=FG,
-                                         selectcolor=PANEL, activebackground=BG,
-                                         activeforeground=FG, disabledforeground=MUTED,
-                                         anchor="w")
+            checks[key] = check_button(f, tr(key), var)
             checks[key].grid(row=row, column=0, columnspan=2, sticky="w", padx=(pad, 0))
         self.karl_startup_check = checks["settings.karl_startup"]
         self.close_to_tray_check = checks["settings.close_to_tray"]
@@ -121,23 +132,22 @@ class SettingsDialog(tk.Toplevel):
             checks["settings.tray_icon"].configure(text=tr("settings.tray_icon") + "  "
                                                    + tr("settings.tray_missing"))
         self._sync_karl_startup()
+
+    def _build_tools(self, f: ttk.Frame) -> None:
         tools = ttk.Frame(f)
         tools.grid(row=17, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Button(tools, text=tr("profile.export"),
-                   command=lambda: app.export_profile(self)).pack(side="left")
+                   command=lambda: self.app.export_profile(self)).pack(side="left")
         ttk.Button(tools, text=tr("profile.import"),
-                   command=lambda: app.import_profile(self)).pack(side="left", padx=(6, 0))
+                   command=lambda: self.app.import_profile(self)).pack(side="left", padx=(6, 0))
         ttk.Button(tools, text=tr("cache.button"),
-                   command=lambda: CacheDialog(app)).pack(side="left", padx=(6, 0))
+                   command=lambda: CacheDialog(self.app)).pack(side="left", padx=(6, 0))
         tools2 = ttk.Frame(f)
         tools2.grid(row=18, column=0, columnspan=2, sticky="w", pady=(6, 0))
         ttk.Button(tools2, text=tr("diag.button"),
-                   command=lambda: app.open_diagnostics(self)).pack(side="left")
-        ttk.Button(tools2, text=tr("log.open"), command=app.open_log).pack(
+                   command=lambda: self.app.open_diagnostics(self)).pack(side="left")
+        ttk.Button(tools2, text=tr("log.open"), command=self.app.open_log).pack(
             side="left", padx=(6, 0))
-
-        ttk.Button(f, text=tr("settings.save"), style="Accent.TButton", command=self.save).grid(
-            row=19, column=1, sticky="e", pady=(16, 0))
 
     def _sync_karl_startup(self):
         self.karl_startup_check.configure(
@@ -183,7 +193,7 @@ class SettingsDialog(tk.Toplevel):
             date = human_date(exp)
             left = exp - time.time()
             if left <= 0:
-                text, color = tr("settings.token_expired", date=date), "#e05a4f"
+                text, color = tr("settings.token_expired", date=date), DANGER
             elif left < 7 * 86400:
                 text, color = tr("settings.token_expires_soon", date=date), ACCENT
             else:
@@ -229,11 +239,11 @@ class SettingsDialog(tk.Toplevel):
             cfg.save()
             self.app.update_account()
             self._build_token_section()
-            self.token_msg.configure(text=tr("settings.token_valid"), fg="#5fbf6a")
+            self.token_msg.configure(text=tr("settings.token_valid"), fg=SUCCESS)
 
         def fail(err):
             text = tr("login.read_failed", msg=err) if getattr(err, "read_failed", False) else err
-            self.token_msg.configure(text=text, fg="#e05a4f")
+            self.token_msg.configure(text=text, fg=DANGER)
 
         self.app.submit(lambda: self.app.client(token).check_access(), ok, fail)
 

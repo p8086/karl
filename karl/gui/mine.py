@@ -8,12 +8,12 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable, Optional, TYPE_CHECKING
 
 from .. import APP_TITLE, game, ui
-from ..browse import human_size
 from ..entry import SOURCE_FILE, extract_local_paths
-from ..i18n import tr
+from ..i18n import human_size, tr
 from ..modio import extract_mod_urls
-from ..theme import ACCENT, BG, BORDER, FG, FONT, MUTED, ON_ACCENT, PANEL
+from ..theme import ACCENT, BG, BORDER, DANGER, FG, FONT, MUTED, ON_ACCENT, PANEL
 from ..ui import px
+from ..widgets import check_button
 from .common import ASSETS, format_when
 from .dialogs import WhatsNewDialog
 from .timemachine import TimeMachineDialog
@@ -29,6 +29,23 @@ class MineTab(tk.Frame):
         self.app = app
         self.lib = app.lib
 
+        self._build_links()
+        self._build_bar()
+        self._build_filters()
+        self._build_footer()
+        mid = tk.Frame(self, bg=BG, padx=16, pady=8)
+        mid.pack(fill="both", expand=True)
+        self._build_list(mid)
+        self._build_side(mid)
+        self._dev_job = None
+        self._dev_waiting = False
+        self._schedule_dev()
+        self.compact = False
+        self.set_compact(bool(self.app.config_.compact_links), save=False)
+        self.update_show_choices()
+        self.refresh()
+
+    def _build_links(self) -> None:
         top = tk.Frame(self, bg=BG, padx=16, pady=12)
         top.pack(fill="x")
         self.links_frame = top
@@ -59,6 +76,7 @@ class MineTab(tk.Frame):
                                    justify="left", text=self._hint())
         self.links_info.pack(fill="x", pady=(4, 0))
 
+    def _build_bar(self) -> None:
         bar = tk.Frame(self, bg=BG, padx=16)
         bar.pack(fill="x", pady=(8, 0))
         self.folder_bar = bar
@@ -84,6 +102,8 @@ class MineTab(tk.Frame):
             side="left", padx=(8, 0))
         self.unsaved_lbl = tk.Label(bar, bg=BG, fg=ACCENT, font=(FONT, 9), text="")
         self.unsaved_lbl.pack(side="left", padx=(12, 0))
+
+    def _build_filters(self) -> None:
         filt = tk.Frame(self, bg=BG, padx=16)
         filt.pack(fill="x", pady=(10, 0))
         tk.Label(filt, text="⌕", bg=BG, fg=MUTED, font=(FONT, 12)).pack(side="left")
@@ -113,6 +133,8 @@ class MineTab(tk.Frame):
                  font=(FONT, 9)).pack(side="right", padx=(12, 6))
         self.compact_btn = ttk.Button(filt, command=self.toggle_compact)
         self.compact_btn.pack(side="right")
+
+    def _build_footer(self) -> None:
         footer = tk.Frame(self, bg=BG, padx=16)
         footer.pack(side="bottom", fill="x", pady=(0, 6))
         counts = tk.Frame(footer, bg=BG)
@@ -127,8 +149,7 @@ class MineTab(tk.Frame):
                      text=tr(f"mine.count_{key}")).pack(side="left", padx=(5, 0))
             self.count_lbls[key] = num
 
-        mid = tk.Frame(self, bg=BG, padx=16, pady=8)
-        mid.pack(fill="both", expand=True)
+    def _build_list(self, mid: tk.Frame) -> None:
         self.sw_on = ui.photo(ASSETS / "switch_on.png")
         self.sw_off = ui.photo(ASSETS / "switch_off.png")
         self.wanted: dict[int, bool] = {}
@@ -160,6 +181,8 @@ class MineTab(tk.Frame):
         sb.pack(side="left", fill="y")
         self.tree.configure(yscrollcommand=sb.set)
 
+    def _build_side(self, mid: tk.Frame) -> None:
+        cfg = self.app.config_
         side = tk.Frame(mid, bg=BG, padx=10)
         side.pack(side="left", fill="y")
         for key, cmd in (("mine.remove", self.remove),
@@ -170,28 +193,16 @@ class MineTab(tk.Frame):
             ttk.Button(side, text=tr(key), command=cmd, width=20).pack(fill="x", pady=3)
         tk.Label(side, text=tr("dev.title"), bg=BG, fg=ACCENT, font=(FONT, 9, "bold"),
                  anchor="w").pack(fill="x", pady=(16, 2))
-        cfg = self.app.config_
         self.dev_var = tk.BooleanVar(value=cfg.dev_mode)
         self.dev_restart_var = tk.BooleanVar(value=cfg.dev_restart)
         for var, key in ((self.dev_var, "dev.mode"), (self.dev_restart_var, "dev.restart")):
-            tk.Checkbutton(side, text=tr(key), variable=var, command=self._dev_settings_changed,
-                           bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,
-                           activeforeground=FG, anchor="w", justify="left",
-                           wraplength=170).pack(fill="x")
+            check_button(side, tr(key), var, self._dev_settings_changed, justify="left",
+                         wraplength=170).pack(fill="x")
         self.crash_var = tk.BooleanVar(value=cfg.crash_watch)
-        tk.Checkbutton(side, text=tr("crash.watch"), variable=self.crash_var,
-                       command=self._crash_setting_changed, bg=BG, fg=FG, selectcolor=PANEL,
-                       activebackground=BG, activeforeground=FG, anchor="w", justify="left",
-                       wraplength=170).pack(fill="x")
+        check_button(side, tr("crash.watch"), self.crash_var, self._crash_setting_changed,
+                     justify="left", wraplength=170).pack(fill="x")
         ttk.Button(side, text=tr("bisect.button"), command=self.open_bisect, width=20).pack(
             fill="x", pady=(8, 0))
-        self._dev_job = None
-        self._dev_waiting = False
-        self._schedule_dev()
-        self.compact = False
-        self.set_compact(bool(cfg.compact_links), save=False)
-        self.update_show_choices()
-        self.refresh()
 
     def set_compact(self, on: bool, save: bool = True):
         if on and not self.compact:
@@ -268,7 +279,7 @@ class MineTab(tk.Frame):
         msg = tr("mine.ready", n=total)
         if ignored:
             msg += " · " + tr("mine.ignored", n=len(ignored))
-        self.links_info.configure(text=msg, fg=FG if total else "#e05a4f")
+        self.links_info.configure(text=msg, fg=FG if total else DANGER)
         self.add_btn.configure(text=tr("mine.add_n", n=total) if total > 1 else tr("mine.add"))
 
     def _ctrl_enter(self, _e):

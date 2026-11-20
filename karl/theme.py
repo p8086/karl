@@ -13,6 +13,9 @@ MUTED = "#a39c94"
 ACCENT = "#e69a1e"
 ACCENT_HOVER = "#f2ad3a"
 ON_ACCENT = "#1a1714"
+DANGER = "#e05a4f"
+SUCCESS = "#5fbf6a"
+IMAGE_BG = "#0d0c0b"
 
 if sys.platform == "win32":
     FONT = "Segoe UI"

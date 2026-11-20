@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 from .. import (APP_TITLE, VERSION, browse as browse_mod, crash, game, i18n, log as karl_log,
                 selfupdate, single, tray as karl_tray, ui)
-from ..browse import BrowseTab, flat_button
+from ..browse import BrowseTab
 from ..config import Config
 from ..details import ModDetails
 from ..i18n import tr
@@ -24,6 +24,7 @@ from ..modio import ModioClient, extract_mod_urls
 from ..theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CHIP, FG, FONT,
                      MUTED, ON_ACCENT, PANEL)
 from ..ui import px
+from ..widgets import flat_button
 from .common import ASSETS, ErrorText, GITHUB_PAGE, open_path, remember_me
 from .dialogs import DiagnosticsDialog, LoginDialog, WhatsNewDialog
 from .mine import MineTab
