@@ -5,6 +5,7 @@ import tempfile
 import types
 import time
 import unittest
+import urllib.request
 from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp())
@@ -198,6 +199,13 @@ class QueryTests(unittest.TestCase):
         self.assertTrue(browse.shorten("a " * 200, 20).endswith("…"))
 
 
+def offline(*a, **k):
+    raise OSError("offline")
+
+
+urllib.request.urlopen = offline
+
+
 class GuiBase(unittest.TestCase):
     def setUp(self):
         for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
@@ -206,13 +214,16 @@ class GuiBase(unittest.TestCase):
                 f.unlink()
         FakeModio.subs = {5}
         FakeModio.calls = []
-        gui.ModioClient = FakeModio
+        gui.app.ModioClient = FakeModio
         library.ModioClient = FakeModio
         Library.__init__.__defaults__ = (FakeModio,)
         browse.fetch_bytes = lambda url, timeout=20: png_bytes()
         browse.Image = Image
         browse.ImageTk = types.SimpleNamespace(PhotoImage=lambda im: ("foto", im.size))
         browse.HAVE_PIL = True
+        saved_get = gui.app.selfupdate._http_get
+        self.addCleanup(setattr, gui.app.selfupdate, "_http_get", saved_get)
+        gui.app.selfupdate._http_get = lambda url, timeout=10: b"{}"
         fake_tk.sys.modules["tkinter.messagebox"].messages.clear()
         fake_tk.Widget.clipboard = None
         self.paks = Path(tempfile.mkdtemp()) / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
@@ -232,7 +243,7 @@ class GuiTests(GuiBase):
         b = app.browse
         self.assertFalse(b.started)
 
-        dlg = gui.LoginDialog(app)
+        dlg = gui.dialogs.LoginDialog(app)
         dlg.token.set("SBAGLIATO")
         dlg.submit()
         pump(app)
@@ -243,9 +254,9 @@ class GuiTests(GuiBase):
         self.assertEqual(app.config_.username, "pe8086")
         self.assertEqual(app.config_.profile_url, "https://mod.io/u/giuseppe8086")
         opened = []
-        saved_open = gui.webbrowser.open
-        self.addCleanup(setattr, gui.webbrowser, "open", saved_open)
-        gui.webbrowser.open = opened.append
+        saved_open = gui.app.webbrowser.open
+        self.addCleanup(setattr, gui.app.webbrowser, "open", saved_open)
+        gui.app.webbrowser.open = opened.append
         app.open_profile()
         app.config_.profile_url = ""
         app.open_profile()
@@ -325,7 +336,7 @@ class GuiTests(GuiBase):
         pump(app, 80)
         self.assertTrue(app.browse.started)
         self.assertEqual(len(app.browse.cards), browse.PAGE_SIZE)
-        gui.SettingsDialog(app).save()
+        gui.settings.SettingsDialog(app).save()
         app.pool.shutdown(wait=True)
 
     def test_paste_many_links(self):
@@ -423,11 +434,11 @@ class CheckboxTests(GuiBase):
 
         mine.toggle_all()
         msgbox = fake_tk.sys.modules["tkinter.messagebox"]
-        old = gui.messagebox.askyesno
-        gui.messagebox.askyesno = lambda *a, **k: False
+        old = gui.app.messagebox.askyesno
+        gui.app.messagebox.askyesno = lambda *a, **k: False
         app.on_close()
         self.assertFalse(getattr(app, "destroyed", False))
-        gui.messagebox.askyesno = old
+        gui.app.messagebox.askyesno = old
         app.pool.shutdown(wait=True)
 
 
@@ -489,14 +500,14 @@ class NewFeaturesTests(GuiBase):
         import os
         from karl import game
         launched, running = [], [False]
-        saved = (game.launch, game.is_running, game.close, gui.time)
+        saved = (game.launch, game.is_running, game.close, gui.mine.time)
         def restore():
-            game.launch, game.is_running, game.close, gui.time = saved
+            game.launch, game.is_running, game.close, gui.mine.time = saved
         self.addCleanup(restore)
         game.launch = lambda: launched.append(1)
         game.is_running = lambda: running[0]
         game.close = lambda: running.__setitem__(0, False) or True
-        gui.time = fake_tk.types.SimpleNamespace(sleep=lambda s: None, time=time.time)
+        gui.mine.time = fake_tk.types.SimpleNamespace(sleep=lambda s: None, time=time.time)
         Config(token=FakeModio.valid_token, username="giuseppe8086", ignore_modio_subs=True).save()
         app = gui.App()
         pump(app, 80)
@@ -622,7 +633,7 @@ class LocalFileTests(GuiBase):
         self.assertEqual(file_row[3], "file .pak")
         fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames = \
             lambda **k: (str(src / "Altra.pak"),)
-        gui.filedialog.askopenfilenames = fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames
+        gui.mine.filedialog.askopenfilenames = fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames
         mine.add_files()
         pump(app, 80)
         self.assertIn("Altra", {m.name for m in app.lib.mods.values()})
@@ -720,7 +731,7 @@ class TokenSettingsTests(GuiBase):
         Config(token=FakeModio.valid_token, username="giuseppe8086").save()
         app = gui.App()
         pump(app, 80)
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         texts = lambda: [w.kw.get("text") for w in self._all(dlg.token_box)]
         self.assertIn("Collegato come pe8086", texts())
         self.assertIn("Scadenza non indicata nel token", texts())
@@ -752,7 +763,7 @@ class TokenSettingsTests(GuiBase):
         self.assertFalse(app.browse.started)
 
         dlg._change_token()
-        login = [w for w in app.children_ if isinstance(w, gui.LoginDialog)][-1]
+        login = [w for w in app.children_ if isinstance(w, gui.dialogs.LoginDialog)][-1]
         login.token.set(soon)
         login.submit()
         pump(app, 80)
@@ -822,7 +833,7 @@ class LoginReadTests(GuiBase):
         FakeModio.no_read_tokens = {"SOLO-ACCOUNT"}
         FakeModio.valid_token = "SOLO-ACCOUNT"
         try:
-            dlg = gui.LoginDialog(app)
+            dlg = gui.dialogs.LoginDialog(app)
             dlg.token.set("SOLO-ACCOUNT")
             dlg.submit()
             pump(app)
@@ -877,7 +888,7 @@ class KarlInstallTests(GuiBase):
         Config(token=FakeModio.valid_token, username="giuseppe8086").save()
         mb = fake_tk.sys.modules["tkinter.messagebox"]
         asked = []
-        old_ask, gui.messagebox.askyesno = gui.messagebox.askyesno, \
+        old_ask, gui.app.messagebox.askyesno = gui.app.messagebox.askyesno, \
             lambda *a, **k: (asked.append(1), False)[1]
         try:
             app = gui.App()
@@ -889,7 +900,7 @@ class KarlInstallTests(GuiBase):
             self.assertEqual(len(asked), 1)
             app.pool.shutdown(wait=True)
         finally:
-            gui.messagebox.askyesno = old_ask
+            gui.app.messagebox.askyesno = old_ask
 
     def test_wrong_paks_folder_is_refused(self):
         wrong = Path(tempfile.mkdtemp()) / "a" / "b"
@@ -932,7 +943,7 @@ class LanguageTests(GuiBase):
         self.assertEqual(app.mine.add_btn.kw["text"], "Aggiungi")
         old_browse = app.browse
         app.browse.cards[0].copy_link()
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.language.set_key("en")
         dlg.save()
         pump(app, 80)
@@ -950,7 +961,7 @@ class LanguageTests(GuiBase):
         app.browse.sort.set_key("alpha")
         self.assertEqual(app.browse.sort.var.get(), "Alphabetical")
         self.assertEqual(app.browse.sort.key, "alpha")
-        gui.SettingsDialog(app).save()
+        gui.settings.SettingsDialog(app).save()
         app.pool.shutdown(wait=True)
 
 
@@ -970,8 +981,8 @@ class AllLanguagesTest(GuiBase):
             self.assertEqual(i18n.current(), code)
             self.assertEqual(len(app.browse.cards), browse.PAGE_SIZE, code)
             self.assertEqual(app.browse.cards[0].copy_btn.kw["text"], "🔗 " + i18n.tr("browse.copy_link"))
-            gui.LoginDialog(app)
-            gui.SettingsDialog(app)
+            gui.dialogs.LoginDialog(app)
+            gui.settings.SettingsDialog(app)
             app.mine._on_links_changed()
         app.pool.shutdown(wait=True)
 
@@ -994,7 +1005,7 @@ class TimeMachineGuiTests(GuiBase):
         pump(app, 80)
         mine, lib = app.mine, app.lib
         tm = lib.time_machine
-        dlg = gui.TimeMachineDialog(mine)
+        dlg = gui.timemachine.TimeMachineDialog(mine)
         self.assertEqual(dlg.tree.get_children(), [])
         dlg.destroy()
 
@@ -1011,18 +1022,18 @@ class TimeMachineGuiTests(GuiBase):
         self.assertFalse(self.installed("mod-30").exists())
         self.assertEqual(len(tm.snapshots), 2)
 
-        dlg = gui.TimeMachineDialog(mine)
+        dlg = gui.timemachine.TimeMachineDialog(mine)
         rows = dlg.tree.get_children()
         self.assertEqual(rows, [tm.snapshots[1]["id"], prima])
         self.assertIn("1", dlg.tree._rows[rows[0]][3])
-        self.assertEqual(dlg.tree._rows[prima][3], gui.tr("tm.first"))
+        self.assertEqual(dlg.tree._rows[prima][3], gui.app.tr("tm.first"))
         dlg.tree.selection_set([prima])
         dlg.restore()
         self.assertTrue(dlg.destroyed)
         pump(app, 80)
         self.assertTrue(lib.mods[30].enabled)
         self.assertTrue(self.installed("mod-30").exists())
-        self.assertIn(gui.format_when(tm.get(prima)["time"]), app.status.get())
+        self.assertIn(gui.common.format_when(tm.get(prima)["time"]), app.status.get())
 
 
 class LinuxWindowTests(GuiBase):
@@ -1040,7 +1051,7 @@ class LinuxWindowTests(GuiBase):
         fake_tk.Widget.grab_set = grab
         self.addCleanup(lambda: delattr(fake_tk.Widget, "grab_set"))
         fake_tk.after_queue.clear()
-        dlg = gui.LoginDialog(app)
+        dlg = gui.dialogs.LoginDialog(app)
         self.assertTrue(hasattr(dlg, "token"))
         self.assertEqual(len(calls), 1)
         while fake_tk.after_queue:
@@ -1106,7 +1117,7 @@ class QualityTests(GuiBase):
         self.assertEqual(lib.mods[30].note, "solo con amici")
         self.assertTrue(self.installed("mod-30").exists())
 
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.auto_updates.set(True)
         dlg.karl_updates.set(False)
         dlg.save()
@@ -1114,7 +1125,7 @@ class QualityTests(GuiBase):
         self.assertTrue(cfg.auto_check_updates)
         self.assertFalse(cfg.check_karl_updates)
 
-        cache = gui.CacheDialog(app)
+        cache = gui.dialogs.CacheDialog(app)
         self.assertIn("mods", cache.report)
         cache.clean()
         self.assertIn("Liberati", app.status.get())
@@ -1131,9 +1142,9 @@ class QualityTests(GuiBase):
         self.assertEqual(calls[1], [m.mod_id for m in lib.folder_mods()])
 
         opened = []
-        saved_open = gui.webbrowser.open
-        gui.webbrowser.open = opened.append
-        self.addCleanup(setattr, gui.webbrowser, "open", saved_open)
+        saved_open = gui.app.webbrowser.open
+        gui.app.webbrowser.open = opened.append
+        self.addCleanup(setattr, gui.app.webbrowser, "open", saved_open)
         app.config_.check_karl_updates = True
         mb = fake_tk.sys.modules["tkinter.messagebox"]
         mb.messages.clear()
@@ -1143,7 +1154,7 @@ class QualityTests(GuiBase):
         self.assertEqual(opened, [])
         self.assertEqual(mb.messages, [])
         app.update_lbl.bindings["<Button-1>"](None)
-        self.assertEqual(opened, [gui.selfupdate.RELEASES_PAGE])
+        self.assertEqual(opened, [gui.app.selfupdate.RELEASES_PAGE])
 
 
 class FeatureTests(GuiBase):
@@ -1306,15 +1317,15 @@ class ShortcutCompactUpdateTests(GuiBase):
     def test_github_link_and_update_icon(self):
         app = self.make_app()
         opened = []
-        saved_open = gui.webbrowser.open
-        gui.webbrowser.open = opened.append
-        self.addCleanup(setattr, gui.webbrowser, "open", saved_open)
+        saved_open = gui.app.webbrowser.open
+        gui.app.webbrowser.open = opened.append
+        self.addCleanup(setattr, gui.app.webbrowser, "open", saved_open)
         app.github_lbl.bindings["<Button-1>"](None)
         self.assertEqual(opened, ["https://github.com/p8086/karl"])
         self.assertTrue(app.update_lbl.packed)
         self.assertEqual(app.update_lbl.kw["text"], "⟳")
 
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.karl_updates.set(False)
         dlg.save()
         self.assertFalse(app.config_.check_karl_updates)
@@ -1323,7 +1334,7 @@ class ShortcutCompactUpdateTests(GuiBase):
         pump(app)
         self.assertEqual(app.update_lbl.kw["text"], "⟳")
         self.assertFalse(app.update_lbl.packed)
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.karl_updates.set(True)
         dlg.save()
         self.assertTrue(app.update_lbl.packed)
@@ -1347,14 +1358,14 @@ class ShortcutCompactUpdateTests(GuiBase):
         self.assertEqual(opened[-1], "https://p/new")
 
         prepared = []
-        saved = (gui.selfupdate.can_self_update, gui.selfupdate.prepare, gui.selfupdate.restart)
-        self.addCleanup(lambda: setattr(gui.selfupdate, "can_self_update", saved[0]) or
-                        setattr(gui.selfupdate, "prepare", saved[1]) or
-                        setattr(gui.selfupdate, "restart", saved[2]))
-        gui.selfupdate.can_self_update = lambda: True
-        gui.selfupdate.prepare = lambda rel, exe, work, progress=None: (
+        saved = (gui.app.selfupdate.can_self_update, gui.app.selfupdate.prepare, gui.app.selfupdate.restart)
+        self.addCleanup(lambda: setattr(gui.app.selfupdate, "can_self_update", saved[0]) or
+                        setattr(gui.app.selfupdate, "prepare", saved[1]) or
+                        setattr(gui.app.selfupdate, "restart", saved[2]))
+        gui.app.selfupdate.can_self_update = lambda: True
+        gui.app.selfupdate.prepare = lambda rel, exe, work, progress=None: (
             prepared.append(rel["version"]) or {"kind": "linux", "exe": str(exe)})
-        gui.selfupdate.restart = lambda plan: prepared.append(plan["kind"])
+        gui.app.selfupdate.restart = lambda plan: prepared.append(plan["kind"])
         app.update_lbl.bindings["<Button-1>"](None)
         pump(app)
         self.assertEqual(prepared, ["99.0.0", "linux"])
@@ -1368,7 +1379,7 @@ class ShortcutCompactUpdateTests(GuiBase):
         self.assertTrue(app.config_.karl_check_startup)
         app.startup_karl_check()
         self.assertEqual(calls, ["check"])
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         self.assertEqual(dlg.karl_startup_check.kw.get("state"), "normal")
         dlg.karl_startup.set(False)
         dlg.save()
@@ -1376,7 +1387,7 @@ class ShortcutCompactUpdateTests(GuiBase):
         app.startup_karl_check()
         self.assertEqual(calls, ["check"])
         self.assertTrue(app.update_lbl.packed)
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.karl_updates.set(False)
         dlg._sync_karl_startup()
         self.assertEqual(dlg.karl_startup_check.kw.get("state"), "disabled")
@@ -1442,11 +1453,11 @@ class BatchFourGuiTests(GuiBase):
         lib.add("https://mod.io/g/drg/m/mod-30")
         self.assertTrue(self.installed("mod-30").exists())
         state = {"running": False, "launched": 0}
-        saved = (gui.game.is_running, gui.game.launch)
-        self.addCleanup(lambda: (setattr(gui.game, "is_running", saved[0]),
-                                 setattr(gui.game, "launch", saved[1])))
-        gui.game.is_running = lambda: state["running"]
-        gui.game.launch = lambda: state.__setitem__("launched", state["launched"] + 1)
+        saved = (gui.app.game.is_running, gui.app.game.launch)
+        self.addCleanup(lambda: (setattr(gui.app.game, "is_running", saved[0]),
+                                 setattr(gui.app.game, "launch", saved[1])))
+        gui.app.game.is_running = lambda: state["running"]
+        gui.app.game.launch = lambda: state.__setitem__("launched", state["launched"] + 1)
         self.assertEqual(app.vanilla_btn.kw["text"], "Gioca senza mod")
         mine.play_vanilla()
         pump(app)
@@ -1579,20 +1590,20 @@ class BatchFourGuiTests(GuiBase):
     def test_diagnostics_and_log(self):
         app = self.make_app()
         FakeModio.me_calls = 0
-        dlg = gui.DiagnosticsDialog(app)
+        dlg = gui.dialogs.DiagnosticsDialog(app)
         pump(app)
         self.assertIn("[ OK ] Paks folder", dlg.report)
         self.assertNotIn(FakeModio.valid_token, dlg.report)
         dlg.copy()
         self.assertEqual(fake_tk.Widget.clipboard, dlg.report)
         opened = []
-        saved = gui.open_path
-        gui.open_path = opened.append
-        self.addCleanup(setattr, gui, "open_path", saved)
-        gui.karl_log.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        gui.karl_log.LOG_FILE.touch()
+        saved = gui.app.open_path
+        gui.app.open_path = opened.append
+        self.addCleanup(setattr, gui.app, "open_path", saved)
+        gui.app.karl_log.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        gui.app.karl_log.LOG_FILE.touch()
         app.open_log()
-        self.assertEqual(opened, [gui.karl_log.LOG_FILE])
+        self.assertEqual(opened, [gui.app.karl_log.LOG_FILE])
 
     def test_tray(self):
         fake = FakeTrayModule()
@@ -1644,7 +1655,7 @@ class InstallsScaleGuiTests(GuiBase):
         beta = Path(tempfile.mkdtemp()) / "Beta" / "FSD" / "Content" / "Paks"
         beta.mkdir(parents=True)
         sd = fake_tk.sys.modules["tkinter.simpledialog"]
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         sd.answers[:] = ["Beta"]
         dlg.add_install()
         self.assertEqual(dlg.paks.get(), "")
@@ -1665,7 +1676,7 @@ class InstallsScaleGuiTests(GuiBase):
         self.assertEqual(app.install_lbl.kw["text"], "·  Beta")
         self.assertIn("Beta", app.status.get())
 
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         main_label = dlg._install_label(dlg._install("main"))
         dlg.install_var.set(main_label)
         dlg._pick_install()
@@ -1679,7 +1690,7 @@ class InstallsScaleGuiTests(GuiBase):
         beta_id = [i["id"] for i in app.config_.installs if i["name"] == "Beta"][0]
         data_dir = library.install_dirs(beta_id)[0]
         data_dir.mkdir(parents=True, exist_ok=True)
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.remove_install()
         self.assertEqual(len(dlg.installs), 2)
         dlg.install_var.set(dlg._install_label(dlg._install(beta_id)))
@@ -1692,11 +1703,11 @@ class InstallsScaleGuiTests(GuiBase):
 
     def test_interface_scale(self):
         app = self.make_app(ui_scale=1.5)
-        self.assertEqual(gui.ui.SCALE, 1.5)
+        self.assertEqual(gui.app.ui.SCALE, 1.5)
         self.assertEqual(browse.CARD_W, 435)
         restarted = []
         app.restart = lambda: restarted.append(True)
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         self.assertEqual(dlg.scale_var.get(), "150%")
         dlg.scale_var.set("100%")
         dlg.save()
@@ -1704,7 +1715,7 @@ class InstallsScaleGuiTests(GuiBase):
         self.assertEqual(restarted, [True])
         app2 = gui.App()
         self.addCleanup(app2.pool.shutdown, wait=True)
-        self.assertEqual(gui.ui.SCALE, 1.0)
+        self.assertEqual(gui.app.ui.SCALE, 1.0)
         self.assertEqual(browse.CARD_W, 290)
 
 class PaksValidationTests(GuiBase):
@@ -1715,7 +1726,7 @@ class PaksValidationTests(GuiBase):
         self.addCleanup(app.pool.shutdown, wait=True)
         pump(app, 80)
         good = app.config_.paks_dir
-        dlg = gui.SettingsDialog(app)
+        dlg = gui.settings.SettingsDialog(app)
         dlg.paks.set(good + "/home/pe8086/.steam/Paks")
         mb = fake_tk.sys.modules["tkinter.messagebox"]
         mb.messages.clear()
@@ -1731,7 +1742,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         if library.HISTORY_FILE.exists():
             library.HISTORY_FILE.unlink()
         Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
-               ignore_modio_subs=True, last_seen_version=gui.VERSION, **cfg).save()
+               ignore_modio_subs=True, last_seen_version=gui.app.VERSION, **cfg).save()
         app = gui.App()
         self.addCleanup(app.pool.shutdown, wait=True)
         pump(app, 80)
@@ -1752,9 +1763,9 @@ class CrashBisectNewsGuiTests(GuiBase):
                     texts.append(c.kw["text"])
                 walk(c)
         walk(app.mine)
-        dev = texts.index(gui.tr("dev.title"))
-        self.assertIn(gui.tr("crash.watch"), texts[dev:])
-        self.assertIn(gui.tr("bisect.button"), texts[dev:])
+        dev = texts.index(gui.app.tr("dev.title"))
+        self.assertIn(gui.app.tr("crash.watch"), texts[dev:])
+        self.assertIn(gui.app.tr("bisect.button"), texts[dev:])
         app.mine.crash_var.set(False)
         app.mine._crash_setting_changed()
         self.assertFalse(Config.load().crash_watch)
@@ -1762,13 +1773,13 @@ class CrashBisectNewsGuiTests(GuiBase):
     def test_crash_detection(self):
         app = self.make_app()
         state = {"running": False}
-        self.patch(gui.game, "is_running", lambda: state["running"])
-        self.patch(gui.game, "launch", lambda: None)
+        self.patch(gui.app.game, "is_running", lambda: state["running"])
+        self.patch(gui.app.game, "launch", lambda: None)
         shown = []
-        self.patch(gui, "CrashDialog", lambda a, found: shown.append(found))
+        self.patch(gui.app, "CrashDialog", lambda a, found: shown.append(found))
         found = {"time": 1.0, "files": ["x"], "detail": "Unhandled Exception: boom", "ue4ss": True}
         result = {"value": found}
-        self.patch(gui.crash, "find_crash", lambda paks, since: result["value"])
+        self.patch(gui.app.crash, "find_crash", lambda paks, since: result["value"])
         app.withdraw_called = []
         fronts = []
         self.patch(app, "bring_to_front", lambda: fronts.append(1))
@@ -1812,11 +1823,11 @@ class CrashBisectNewsGuiTests(GuiBase):
         app.lib.add("https://mod.io/g/drg/m/mod-30")
         app.lib.history.add("session_ok", folder=app.lib.active_folder)
         app.lib.apply({30: False})
-        dlg = gui.CrashDialog(app, {"time": 1700000000, "files": ["x"],
+        dlg = gui.troubleshoot.CrashDialog(app, {"time": 1700000000, "files": ["x"],
                                     "detail": "Unhandled Exception: boom", "ue4ss": False})
         self.assertIn("boom", dlg.text.buf)
         self.assertIn("Mod 30", dlg.text.buf)
-        tm = gui.TimeMachineDialog(app.mine)
+        tm = gui.timemachine.TimeMachineDialog(app.mine)
         rows = list(tm.hist_tree._rows.values())
         self.assertTrue(any("Mod 30" in r[2] for r in rows))
         tm.hist_search.set("nessuna corrispondenza")
@@ -1830,7 +1841,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         lib.apply({34: False})
         lib.mods[31].deps = [{"id": 30, "name": "Mod 30", "url": ""}]
         launched = []
-        self.patch(gui.game, "launch", lambda: launched.append(1))
+        self.patch(gui.app.game, "launch", lambda: launched.append(1))
         app.mine.open_bisect()
         dlg = app.bisect_win
         self.assertEqual(Config.load().bisect_restore,
@@ -1883,8 +1894,8 @@ class CrashBisectNewsGuiTests(GuiBase):
     def test_whats_new(self):
         app = self.make_app()
         shown = []
-        orig = gui.WhatsNewDialog
-        self.patch(gui, "WhatsNewDialog", lambda *a, **k: shown.append(orig(*a, **k)))
+        orig = gui.dialogs.WhatsNewDialog
+        self.patch(gui.mine, "WhatsNewDialog", lambda *a, **k: shown.append(orig(*a, **k)))
         app.lib.add("https://mod.io/g/drg/m/mod-30")
         FakeModio.mods[29]["modfile"]["id"] = 555
         FakeModio.mods[29]["modfile"]["version"] = "2.0"
@@ -1909,12 +1920,12 @@ class CrashBisectNewsGuiTests(GuiBase):
     def test_karl_notes(self):
         app = self.make_app()
         shown = []
-        self.patch(gui, "WhatsNewDialog", lambda *a, **k: shown.append(k.get("karl_notes")))
+        self.patch(gui.app, "WhatsNewDialog", lambda *a, **k: shown.append(k.get("karl_notes")))
         app.config_.last_seen_version = "0.0.1"
         app.check_karl_notes(fetch=lambda u: b'{"body": "Note di rilascio"}')
         pump(app)
         self.assertEqual(shown, ["Note di rilascio"])
-        self.assertEqual(Config.load().last_seen_version, gui.VERSION)
+        self.assertEqual(Config.load().last_seen_version, gui.app.VERSION)
         app.check_karl_notes(fetch=lambda u: b'{"body": "x"}')
         pump(app)
         self.assertEqual(len(shown), 1)

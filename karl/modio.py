@@ -94,6 +94,8 @@ class ModioClient:
             msg, ref = err.get("message", ""), err.get("error_ref")
         except Exception:
             pass
+        finally:
+            e.close()
         text = {401: tr("err.unauthorized"), 403: msg or tr("err.forbidden"),
                 404: msg or tr("err.not_found"), 429: tr("err.rate_limit")}.get(
             e.code, tr("err.http", msg=msg or e.reason))

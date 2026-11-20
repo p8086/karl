@@ -265,23 +265,39 @@ mod.io filter names (groups and tags) are translated too, when the website provi
 ## Project layout
 
 ```
-main.py             entry point (GUI or CLI)
-karl/modio.py       mod.io API client (account, tags, search, subscriptions, downloads)
-karl/library.py     config, Steam lookup, installing into Content/Paks
-karl/pakfile.py     .pak index reader (finds InitSpacerig/InitCave)
-karl/timemachine.py snapshots and restore (time machine)
-karl/proton.py      Linux: dwmapi override in the Proton prefix
-karl/game.py        starting, detecting and closing DRG (Windows and Linux)
-karl/integration.py UE4SS + KarlLoader (starting blueprint mods)
-karl/loader/        KarlLoader Lua script
-karl/browse.py      Browse tab (filters, cards, auto refresh)
-karl/gui.py         main window, sign-in, My mods, settings
-karl/theme.py       colors and fonts
-karl/i18n.py        translations (karl/locales/*.json)
-karl/cli.py         command line
-tests/              offline tests: test_core.py, test_browse.py, test_integration.py
-packaging/          install.sh for the Linux package
-.github/workflows/  automatic release builds
+main.py                  entry point (GUI or CLI)
+karl/modio.py            mod.io API client (account, tags, search, ratings, downloads)
+karl/library.py          config, Steam lookup, installing into Content/Paks
+karl/pakfile.py          .pak index reader (finds InitSpacerig/InitCave)
+karl/timemachine.py      snapshots and restore (time machine)
+karl/history.py          change history
+karl/proton.py           Linux: dwmapi override in the Proton prefix
+karl/game.py             starting, detecting and closing DRG (Windows and Linux)
+karl/integration.py      UE4SS + KarlLoader (starting blueprint mods)
+karl/loader/             KarlLoader Lua script
+karl/crash.py            crash detection
+karl/bisect.py           problem mod search
+karl/selfupdate.py       Karl updates
+karl/diagnostics.py      diagnostics report
+karl/browse.py           Browse tab (filters, cards, auto refresh)
+karl/details.py          mod details window
+karl/tray.py             notification area icon
+karl/gui/app.py          main window
+karl/gui/mine.py         My mods tab
+karl/gui/settings.py     settings
+karl/gui/dialogs.py      sign-in, diagnostics, what's new, cache
+karl/gui/timemachine.py  time machine and history window
+karl/gui/troubleshoot.py crash report and problem mod search windows
+karl/gui/common.py       shared GUI helpers
+karl/ui.py               interface size
+karl/single.py           single instance
+karl/log.py              log file
+karl/theme.py            colors and fonts
+karl/i18n.py             translations (karl/locales/*.json)
+karl/cli.py              command line
+tests/                   offline tests: test_core.py, test_browse.py, test_integration.py
+packaging/               install.sh for the Linux package
+.github/workflows/       automatic release builds
 ```
 
 ## Building
