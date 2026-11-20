@@ -269,4 +269,4 @@ Karl is an unofficial fan project. It is not affiliated with, endorsed or sponso
 
 ## Logo
 
-The Karl logo was manually designed by Pietro Schena.
+The Karl logos were manually designed by Pietro Schena.
