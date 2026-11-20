@@ -21,7 +21,8 @@ from typing import Callable, Optional
 
 from . import APP_TITLE, VERSION, game
 from .browse import BrowseTab, Choice, flat_button, human_date, human_size, set_button_style
-from . import selfupdate
+from . import selfupdate, single
+from .details import ModDetails
 from .library import (MODE_LOCAL, MODE_SUBSCRIBE, SOURCE_FILE, Config, Library,
                       extract_local_paths, find_paks_dir)
 from . import i18n
@@ -81,6 +82,7 @@ class App(tk.Tk):
         self.after(2500, self.check_integration)
         self.after(3000, self.auto_check_updates)
         self.after(4000, self.check_karl_update)
+        self.after(5000, self.check_game_update)
 
     def check_integration(self):
         try:
@@ -433,6 +435,52 @@ class App(tk.Tk):
 
         self.submit(lambda: selfupdate.latest_version(**kw), done, lambda err: None)
 
+    def bring_to_front(self):
+        try:
+            self.deiconify()
+            self.lift()
+            self.attributes("-topmost", True)
+            self.after(300, lambda: self.attributes("-topmost", False))
+            self.focus_force()
+        except tk.TclError:
+            pass
+
+    def open_details(self, game_id: int, mod_id: int, mod: Optional[dict] = None,
+                     name: str = ""):
+        old = getattr(self, "_details", None)
+        if old is not None and old.winfo_exists():
+            old.destroy()
+        self._details = ModDetails(self, game_id, mod_id, mod, name)
+
+    def check_game_update(self):
+        try:
+            changed = self.lib.game_update_check()
+        except Exception as err:
+            log.warning("controllo aggiornamento DRG fallito: %s", err)
+            return
+        if not changed:
+            return
+        if not self.config_.logged_in:
+            messagebox.showwarning(APP_TITLE, tr("drg_update.generic"))
+            return
+
+        def done(res):
+            latest, old = res
+            if not latest:
+                messagebox.showwarning(APP_TITLE, tr("drg_update.generic"))
+            elif not old:
+                messagebox.showinfo(APP_TITLE, tr("drg_update.all_ok", version=latest))
+            else:
+                names = "\n".join(f"• {e.name}" for e in old[:15])
+                if len(old) > 15:
+                    names += "\n" + tr("mine.failed_more", n=len(old) - 15)
+                messagebox.showwarning(APP_TITLE, tr("drg_update.outdated", version=latest,
+                                                     n=len(old), mods=names))
+            self.refresh_mine()
+
+        self.submit(self.lib.outdated_mods, done,
+                    lambda err: messagebox.showwarning(APP_TITLE, tr("drg_update.generic")))
+
     def export_profile(self, parent=None):
         path = filedialog.asksaveasfilename(
             parent=parent or self, title=tr("profile.export"), defaultextension=".karl",
@@ -578,13 +626,23 @@ class MineTab(tk.Frame):
             side="left", padx=(8, 0))
         self.unsaved_lbl = tk.Label(bar, bg=BG, fg=ACCENT, font=(FONT, 9), text="")
         self.unsaved_lbl.pack(side="left", padx=(12, 0))
+        filt = tk.Frame(self, bg=BG, padx=16)
+        filt.pack(fill="x", pady=(10, 0))
+        tk.Label(filt, text="⌕", bg=BG, fg=MUTED, font=(FONT, 12)).pack(side="left")
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(filt, textvariable=self.search_var, width=32)
+        self.search_entry.pack(side="left", padx=(6, 0))
+        self.search_var.trace_add("write", lambda *_a: self.refresh())
+        self.search_entry.bind("<Escape>", lambda _e: self.search_var.set(""))
+        tk.Label(filt, text=tr("mine.search_hint"), bg=BG, fg=MUTED,
+                 font=(FONT, 9)).pack(side="left", padx=(8, 0))
         self.show_choices = [tr("mine.show_all"), tr("mine.show_fav")]
         self.show_var = tk.StringVar(value=self.show_choices[0])
-        show_combo = ttk.Combobox(bar, textvariable=self.show_var, values=self.show_choices,
-                                  state="readonly", width=16)
+        show_combo = ttk.Combobox(filt, textvariable=self.show_var, values=self.show_choices,
+                                  state="readonly", width=18)
         show_combo.pack(side="right")
         show_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
-        tk.Label(bar, text=tr("mine.show_label"), bg=BG, fg=MUTED,
+        tk.Label(filt, text=tr("mine.show_label"), bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(side="right", padx=(12, 6))
         footer = tk.Frame(self, bg=BG, padx=16)
         footer.pack(side="bottom", fill="x", pady=(0, 6))
@@ -634,6 +692,7 @@ class MineTab(tk.Frame):
         side = tk.Frame(mid, bg=BG, padx=10)
         side.pack(side="left", fill="y")
         for key, cmd in (("mine.remove", self.remove),
+                         ("details.button", self.open_details),
                          ("mine.open", self.open_page),
                          ("rollback.button", self.rollback),
                          ("mine.note", self.edit_note)):
@@ -723,6 +782,7 @@ class MineTab(tk.Frame):
         selected = self.tree.selection()
         self.tree.delete(*self.tree.get_children())
         mods = self.visible_mods()
+        missing = self.lib.missing_dependencies(self.wanted)
         for m in mods:
             on = self.is_on(m)
             ver = m.version or "-"
@@ -730,7 +790,7 @@ class MineTab(tk.Frame):
                 ver = f"{ver} 🔒"
             if m.has_update:
                 ver = f"{ver} → {m.latest_version}"
-            label = m.name + (" ✎" if m.note else "")
+            label = m.name + (" ✎" if m.note else "") + (" ⚠" if m.mod_id in missing else "")
             self.tree.insert("", "end", iid=str(m.mod_id), text="",
                              image=self.sw_on if on else self.sw_off,
                              tags=() if on else ("off",),
@@ -748,9 +808,21 @@ class MineTab(tk.Frame):
     def only_favorites(self) -> bool:
         return self.show_var.get() == self.show_choices[1]
 
+    def search_text(self) -> str:
+        return " ".join(self.search_var.get().lower().split())
+
+    def filtered(self) -> bool:
+        return self.only_favorites() or bool(self.search_text())
+
     def visible_mods(self) -> list:
         mods = self.lib.folder_mods()
-        return [m for m in mods if m.favorite] if self.only_favorites() else mods
+        if self.only_favorites():
+            mods = [m for m in mods if m.favorite]
+        words = self.search_text().split()
+        if words:
+            mods = [m for m in mods
+                    if all(w in f"{m.name} {m.slug} {m.note}".lower() for w in words)]
+        return mods
 
     def is_on(self, m) -> bool:
         return self.wanted.get(m.mod_id, m.enabled)
@@ -794,7 +866,7 @@ class MineTab(tk.Frame):
     def _on_drag(self, e):
         if not self._drag or self.app.busy:
             return
-        if self.only_favorites():
+        if self.filtered():
             self.app.set_status(tr("mine.order_all_hint"))
             return
         target = self.tree.identify_row(e.y)
@@ -810,7 +882,7 @@ class MineTab(tk.Frame):
 
     def _move_selected(self, delta: int):
         sel = self.selected_ids()
-        if self.only_favorites():
+        if self.filtered():
             self.app.set_status(tr("mine.order_all_hint"))
             return
         if len(sel) == 1:
@@ -835,8 +907,21 @@ class MineTab(tk.Frame):
     def _on_double(self, e):
         if self.tree.identify_column(e.x) in ("#0", "#4"):
             return "break"
-        self.toggle()
+        row = self.tree.identify_row(e.y)
+        if row:
+            self.tree.selection_set([row])
+            self.open_details()
         return "break"
+
+    def open_details(self):
+        ids = self.selected_ids()
+        if len(ids) != 1 or ids[0] not in self.lib.mods:
+            return
+        e = self.lib.mods[ids[0]]
+        if e.source == SOURCE_FILE:
+            self.app.set_status(tr("details.local_file", name=e.name))
+            return
+        self.app.open_details(e.game_id, e.mod_id, name=e.name)
 
     def toggle_all(self):
         mods = self.visible_mods()
@@ -904,7 +989,13 @@ class MineTab(tk.Frame):
 
     def show_note(self, _event=None):
         ids = self.selected_ids()
-        if len(ids) == 1 and ids[0] in self.lib.mods and self.lib.mods[ids[0]].note:
+        if len(ids) != 1 or ids[0] not in self.lib.mods:
+            return
+        missing = self.lib.missing_dependencies(self.wanted).get(ids[0])
+        if missing:
+            self.app.set_status(tr("deps.status", name=self.lib.mods[ids[0]].name,
+                                   deps=", ".join(d["name"] for d in missing)))
+        elif self.lib.mods[ids[0]].note:
             self.app.set_status(tr("mine.note_status", note=self.lib.mods[ids[0]].note))
 
     def rollback(self):
@@ -1204,6 +1295,10 @@ class MineTab(tk.Frame):
         risky = self.lib.not_verified(added_ids)
         if risky:
             app.post(self._warn_not_verified, risky)
+        missing = self.lib.missing_dependencies()
+        need = {self.lib.mods[i].name: missing[i] for i in added_ids if i in missing}
+        if need:
+            app.post(self._warn_missing_deps, need)
         summary = tr("mine.added_summary", ok=len(added), n=len(items))
         if failed:
             summary += " " + tr("mine.failed_count", n=len(failed))
@@ -1214,6 +1309,16 @@ class MineTab(tk.Frame):
     def _warn_not_verified(self, names: list[str]):
         messagebox.showwarning(APP_TITLE, tr("warn.not_verified",
                                              mods="\n".join(f"• {n}" for n in names[:15])))
+
+    def _warn_missing_deps(self, need: dict[str, list[dict]]):
+        lines = []
+        for name, deps in list(need.items())[:10]:
+            lines.append(f"• {name}: " + ", ".join(d["name"] for d in deps))
+        links = sorted({d["url"] for deps in need.values() for d in deps if d.get("url")})
+        text = tr("deps.warning", mods="\n".join(lines))
+        if links:
+            text += "\n\n" + tr("deps.links") + "\n" + "\n".join(links[:10])
+        messagebox.showwarning(APP_TITLE, text)
 
     def _report_failed(self, failed: list[tuple[str, str]]):
         self.links.insert("1.0", "\n".join(u for u, _ in failed) + "\n")
@@ -1681,4 +1786,12 @@ class CacheDialog(tk.Toplevel):
 
 def main():
     karl_log.setup()
-    App().mainloop()
+    instance = single.SingleInstance()
+    if not instance.acquire() and instance.notify_existing():
+        return
+    app = App()
+    instance.serve(lambda: app.post(app.bring_to_front))
+    try:
+        app.mainloop()
+    finally:
+        instance.close()

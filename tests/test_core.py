@@ -56,7 +56,17 @@ class FakeClient:
     def unsubscribe(self, g, m):
         FakeClient.subs.discard(m)
 
-    def download(self, url, dest, progress=None):
+    deps: dict = {}
+    md5_seen: list = []
+
+    def dependencies(self, g, m):
+        return FakeClient.deps.get(m, [])
+
+    def list_modfiles(self, g, m, limit=10):
+        return []
+
+    def download(self, url, dest, progress=None, md5=""):
+        FakeClient.md5_seen.append(md5)
         dest.parent.mkdir(parents=True, exist_ok=True)
         data = make_zip({"cartella/../../evil/Test.pak": b"PAK" + FakeClient.version["v"].encode(),
                          "readme.txt": b"ciao"})
@@ -643,6 +653,124 @@ class Tests(unittest.TestCase):
         self.lib.disable_foreign_loader()
         self.assertEqual(len(list((backup / "Binaries" / "Win64").glob("x3daudio1_7*.dll"))), 2)
 
+
+class NewFeatureTests(unittest.TestCase):
+    def setUp(self):
+        root = Path(tempfile.mkdtemp())
+        self.steamapps = root / "steamapps"
+        self.paks = self.steamapps / "common" / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
+        self.paks.mkdir(parents=True)
+        (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        FakeClient.version = {"file_id": 1, "v": "1.0"}
+        FakeClient.deps = {}
+        FakeClient.md5_seen = []
+        self.cfg = Config(token="t", paks_dir=str(self.paks))
+        self.lib = Library(self.cfg, client_factory=FakeClient)
+
+    def test_md5_passed_and_checked(self):
+        from karl import modio
+        info = modio.modfile_info({"modfile": {"id": 3, "filehash": {"md5": "ABC"},
+                                               "download": {"binary_url": "u"}}})
+        self.assertEqual(info["md5"], "ABC")
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertEqual(FakeClient.md5_seen, [""])
+
+        payload = b"contenuto della mod"
+
+        class Resp(io.BytesIO):
+            headers = {"Content-Length": str(len(payload))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        client = modio.ModioClient("t")
+        client._open = lambda method, url, data=None: Resp(payload)
+        dest = Path(tempfile.mkdtemp()) / "mod.zip"
+        import hashlib
+        good = hashlib.md5(payload).hexdigest()
+        self.assertEqual(client.download("u", dest, md5=good.upper()).read_bytes(), payload)
+        dest.unlink()
+        with self.assertRaises(modio.ModioError):
+            client.download("u", dest, md5="0" * 32)
+        self.assertFalse(dest.exists())
+        self.assertFalse(dest.with_suffix(".zip.part").exists())
+
+    def test_dependencies_reported_not_installed(self):
+        FakeClient.deps = {42: [{"mod_id": 7, "name": "DRGLib", "name_id": "drglib"}]}
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertEqual(e.deps, [{"id": 7, "name": "DRGLib", "url": "https://mod.io/g/drg/m/drglib"}])
+        self.assertNotIn(7, self.lib.mods)
+        self.assertEqual(list(self.lib.missing_dependencies()), [42])
+        self.assertEqual(self.lib.missing_dependencies({42: False}), {})
+        self.lib.set_enabled(42, False)
+        self.assertEqual(self.lib.missing_dependencies(), {})
+
+    def test_no_dependency_call_when_flag_false(self):
+        calls = []
+        self.addCleanup(setattr, FakeClient, "dependencies", FakeClient.dependencies)
+        FakeClient.dependencies = lambda self, g, m: calls.append(m) or []
+        saved = FakeClient._mod
+        FakeClient._mod = lambda self: dict(saved(self), dependencies=False)
+        self.addCleanup(setattr, FakeClient, "_mod", saved)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertEqual(e.deps, [])
+        self.assertEqual(calls, [])
+
+    def test_game_update_detection(self):
+        manifest = self.steamapps / "appmanifest_548430.acf"
+        self.assertFalse(self.lib.game_update_check())
+        manifest.write_text('"AppState"\n{\n\t"appid"\t\t"548430"\n\t"buildid"\t\t"100"\n}\n')
+        self.assertEqual(self.lib.game_build(), "100")
+        self.assertFalse(self.lib.game_update_check())
+        self.assertEqual(self.cfg.game_build, "100")
+        self.assertFalse(self.lib.game_update_check())
+        manifest.write_text('"buildid"\t\t"101"')
+        self.assertTrue(self.lib.game_update_check())
+        self.assertFalse(self.lib.game_update_check())
+
+    def test_outdated_mods(self):
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        FakeClient.game_tags = lambda self, g: [
+            {"name": "Game Version", "tags": ["1.38", "1.39", "1.40"]},
+            {"name": "Type", "tags": ["QoL"]}]
+        tagged = {"tags": [{"name": "1.39"}, {"name": "QoL"}]}
+        FakeClient.mods_by_ids = lambda self, g, ids: [dict(self._mod(), **tagged)]
+        self.addCleanup(delattr, FakeClient, "game_tags")
+        self.addCleanup(delattr, FakeClient, "mods_by_ids")
+        latest, old = self.lib.outdated_mods()
+        self.assertEqual(latest, "1.40")
+        self.assertEqual([e.mod_id for e in old], [42])
+        self.assertEqual(self.lib.mods[42].game_versions, ["1.39"])
+        tagged["tags"].append({"name": "1.40"})
+        self.assertEqual(self.lib.outdated_mods()[1], [])
+
+    def test_single_instance(self):
+        import socket
+        import threading
+        from karl import single
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        first = single.SingleInstance(port)
+        self.assertTrue(first.acquire())
+        self.addCleanup(first.close)
+        shown = threading.Event()
+        first.serve(shown.set)
+        second = single.SingleInstance(port)
+        self.assertFalse(second.acquire())
+        self.assertTrue(second.notify_existing())
+        self.assertTrue(shown.wait(2))
+        first.close()
+        third = single.SingleInstance(port)
+        self.assertTrue(third.acquire())
+        third.close()
 
 if __name__ == "__main__":
     unittest.main()

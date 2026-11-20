@@ -79,7 +79,7 @@ The list of DRG mods from the website, with:
 - **Date live**: all time, last 24 hours, week, month, year;
 - **Sort**: trending, recently added, last updated, most popular, most subscribers, highest rated, alphabetical.
 
-Each card shows cover, name, author, last update, description, type, downloads, size and subscribers. Clicking the title or the cover opens the mod's page on the website. The only button is **🔗 Copy link**: it copies the link to the clipboard and puts it in the *Mod links* box of the My mods tab, without installing anything. So you collect mods while browsing and then install them all at once with **Add**. Scrolling to the bottom loads more mods.
+Each card shows cover, name, author, last update, description, type, downloads, size and subscribers. Clicking the title or the cover opens the mod's **details** (see below). The only button is **🔗 Copy link**: it copies the link to the clipboard and puts it in the *Mod links* box of the My mods tab, without installing anything. So you collect mods while browsing and then install them all at once with **Add**. Scrolling to the bottom loads more mods.
 
 **Live updates.** mod.io does not send push notifications to third-party apps, so Karl checks again by itself every 60 seconds (configurable in Settings). It refreshes the visible mods and their stats. Your mod.io account's subscriptions don't matter: the mod list is Karl's own.
 
@@ -91,7 +91,7 @@ As on the website, tags within the same group are OR (e.g. 1.39 *or* 1.40) and d
 
 ![The My mods tab](docs/screenshots/my-mods.png)
 
-Here are the mods installed by Karl. Next to each name there is a **switch**: one click turns the mod on or off (disabled mods turn grey). The switch in the header turns them all on, or all off if they are already all on. The space bar and double-clicking the name work too.
+Here are the mods installed by Karl. Next to each name there is a **switch**: one click turns the mod on or off (disabled mods turn grey). The switch in the header turns them all on, or all off if they are already all on. The space bar works too; double-clicking a name opens the mod's details.
 
 Switches **don't change the game right away**. Above the list there are two buttons:
 
@@ -118,6 +118,18 @@ The counters under the list show how many mods are installed, pending and waitin
 **Time machine.** Every time you press **Install and save** (also through Play or when switching folder) Karl takes a snapshot of the active folder: which mods it had, in what order, on or off and at which version. If nothing changed, no new snapshot is made. **🕘 Time machine** lists them by date, with a summary of what changed each time (mods added or removed, versions, switches, order). Pick a moment and press **Restore**: the folder goes back exactly as it was, even with mods you had removed meanwhile. Mods brought back to a different version stay locked (🔒) until you press **Previous version** to return to the latest one. Each version's .pak files are stored only once (`~/.cache/karl/istantanee/`) and Karl keeps the last 50 snapshots of each folder (a folder you use a lot doesn't erase the others' history; if you rename a folder, its history follows it).
 
 **Favorites and notes.** Click the ☆ at the right end of a row to add the mod to your favorites (★), click again to remove it. The **Show** drop-down above the list switches between all mods and favorites only (to change the load order, show all mods). Select a mod and press **Note…** to write a short note (for example "only with friends" or "breaks the HUD with X"): mods with a note show ✎ next to their name, and selecting one shows the note in the status bar.
+
+**Search.** The ⌕ box above the list filters the active folder as you type, by name or note (Esc clears it). While the list is filtered, the load order can't be changed.
+
+**Mod details.** Double-click a mod in My mods (or press **Details…**), or click a card in Browse: a window shows cover, author, stats, the game versions the mod is marked for, the full description, its images (click one to open it full size), the last versions with their changelog, and the mods it requires. Buttons open the mod.io page or copy the link.
+
+**Required mods.** Karl reads from mod.io which other mods each mod needs (for example Mod Hub or DRGLib). If one is missing from the active folder or turned off, the mod shows ⚠ next to its name, selecting it tells you what is missing, and after **Add** Karl lists the missing ones with their links. It never installs anything on its own: you add them like any other mod.
+
+**After a DRG update.** At startup Karl reads the game's build number from Steam. When it changes, it tells you which mods turned on in the active folder are not yet marked on mod.io for the latest game version, so you know which ones might break.
+
+**Safe downloads.** Every file downloaded from mod.io is checked against the MD5 that mod.io publishes: a damaged or incomplete download is thrown away and never installed.
+
+**One window only.** If you open Karl while it's already running, the open window comes to the front instead of starting a second copy.
 
 **Moving to another PC.** In **Settings → Export configuration…** Karl saves one `.karl` file with all your folders, load order, switches, locked versions, favorites and notes. On the other PC (Windows or Linux) use **Import configuration…**: Karl downloads the missing mods, restores locked mods at their exact version and applies the active folder. Folders with the same name are replaced; mods added from .pak files are not included, since they only exist on your PC.
 

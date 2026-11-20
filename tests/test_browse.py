@@ -109,7 +109,20 @@ class FakeModio:
     def unsubscribe(self, gid, mid):
         FakeModio.subs.discard(mid)
 
-    def download(self, url, dest, progress=None):
+    deps: dict = {}
+
+    def dependencies(self, gid, mid):
+        return FakeModio.deps.get(mid, [])
+
+    def list_modfiles(self, gid, mid, limit=10):
+        self._log("files", mid)
+        return [{"id": 900 + mid, "version": "2.0", "date_added": 1700000000, "filesize": 1024,
+                 "changelog": "<p>Fixed <b>things</b></p>"}]
+
+    def mods_by_ids(self, gid, ids):
+        return [m for m in FakeModio.mods if m["id"] in ids]
+
+    def download(self, url, dest, progress=None, md5=""):
         import zipfile
         dest.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(dest, "w") as zf:
@@ -1170,6 +1183,119 @@ class QualityTests(GuiBase):
         pump(app)
         self.assertEqual(len(opened), 1)
 
+
+class FeatureTests(GuiBase):
+    def make_app(self):
+        FakeModio.subs = set()
+        FakeModio.deps = {}
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True).save()
+        app = gui.App()
+        self.addCleanup(app.pool.shutdown, wait=True)
+        pump(app, 80)
+        return app
+
+    def messages(self):
+        return fake_tk.sys.modules["tkinter.messagebox"].messages
+
+    def test_search_my_mods(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        for i in (30, 31, 32):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+        lib.set_note(31, "Rocket jump")
+        mine.refresh()
+        mine.search_var.set("31")
+        self.assertEqual(mine.tree.get_children(), ["31"])
+        mine.search_var.set("rocket")
+        self.assertEqual(mine.tree.get_children(), ["31"])
+        mine.search_var.set("  MOD   3 ")
+        self.assertEqual(sorted(mine.tree.get_children()), ["30", "31", "32"])
+        mine.search_var.set("mod-32")
+        self.assertEqual(mine.tree.get_children(), ["32"])
+        mine.tree.selection_set(["32"])
+        mine._move_selected(-1)
+        self.assertIn("ordine", app.status.get())
+        mine.search_var.set("")
+        self.assertEqual(sorted(mine.tree.get_children()), ["30", "31", "32"])
+
+    def test_details_from_my_mods_and_browse(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        mine.refresh()
+        mine.tree.__dict__["_hit"] = ("cell", "#1", "30")
+        self.assertEqual(mine._on_double(types.SimpleNamespace(x=1, y=1)), "break")
+        pump(app)
+        d = app._details
+        self.assertEqual(d.mod_id, 30)
+        self.assertEqual(d.name_lbl.kw["text"], "Mod 30")
+        self.assertIn("Fixed things", d.files_text.buf)
+        self.assertIn("2.0", d.files_text.buf)
+        self.assertIn("Una mod di prova", d.desc_text.buf)
+        self.assertIn("1.40", d.versions_lbl.kw["text"])
+        self.assertIn(("files", 30), FakeModio.calls)
+        self.assertEqual(lib.mods[30].deps, [])
+
+        card = app.browse.cards[2]
+        card.img.bindings["<Button-1>"](None)
+        pump(app)
+        self.assertIsNot(app._details, d)
+        self.assertTrue(d.destroyed)
+        self.assertEqual(app._details.mod_id, card.mod_id)
+        self.assertIn("Non è tra le tue mod", app._details.state_lbl.kw["text"])
+
+    def test_html_to_text(self):
+        from karl.details import html_to_text
+        self.assertEqual(html_to_text("<p>Ciao&nbsp;<b>mondo</b></p><ul><li>uno</li><li>due</li></ul>"),
+                         "Ciao mondo\n\n• uno\n\n• due")
+        self.assertEqual(html_to_text(""), "")
+
+    def test_missing_dependencies_warning(self):
+        app = self.make_app()
+        mine = app.mine
+        FakeModio.deps = {33: [{"mod_id": 34, "name": "Mod 34", "name_id": "mod-34"}]}
+        self.addCleanup(setattr, FakeModio, "deps", {})
+        self.messages().clear()
+        mine.links.insert("1.0", "https://mod.io/g/drg/m/mod-33\n")
+        mine.add_mod()
+        pump(app, 80)
+        self.assertIn(33, app.lib.mods)
+        self.assertNotIn(34, app.lib.mods)
+        warns = [m for m in self.messages() if m[0] == "warn"]
+        self.assertTrue(any("Mod 34" in m[2] and "mod-34" in m[2] for m in warns))
+        self.assertTrue(mine.tree._rows["33"][0].endswith(" ⚠"))
+        mine.tree.selection_set(["33"])
+        mine.show_note()
+        self.assertIn("Mod 34", app.status.get())
+        mine.set_states({33: False})
+        self.assertFalse(mine.tree._rows["33"][0].endswith(" ⚠"))
+
+    def test_game_update_warning(self):
+        app = self.make_app()
+        lib = app.lib
+        old_tags = FakeModio.mods[34]["tags"]
+        FakeModio.mods[34]["tags"] = [{"name": "1.39"}, {"name": "Verified"}]
+        self.addCleanup(lambda: FakeModio.mods[34].__setitem__("tags", old_tags))
+        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-35", MODE_LOCAL)
+        self.messages().clear()
+        lib.game_update_check = lambda: False
+        app.check_game_update()
+        pump(app)
+        self.assertEqual(self.messages(), [])
+        lib.game_update_check = lambda: True
+        app.check_game_update()
+        pump(app)
+        warn = [m for m in self.messages() if m[0] == "warn"]
+        self.assertEqual(len(warn), 1)
+        self.assertIn("Mod 35", warn[0][2])
+        self.assertNotIn("Mod 30", warn[0][2])
+        self.assertIn("1.40", warn[0][2])
+
+    def test_bring_to_front(self):
+        app = self.make_app()
+        app.bring_to_front()
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,8 @@ from typing import Callable, Optional
 from . import APP_NAME
 from .i18n import tr
 from . import game, integration, proton
-from .modio import ModioClient, ModioError, modfile_info, parse_mod_url
+from .modio import (KNOWN_GAMES, DEFAULT_GAME, ModioClient, ModioError, dependency_info,
+                    game_versions_of, modfile_info, parse_mod_url, version_key)
 from .pakfile import PakError, hide_asset_registry, init_classes
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_NAME
@@ -104,6 +105,7 @@ class Config:
     auto_check_updates: bool = False
     check_karl_updates: bool = True
     skip_karl_version: str = ""
+    game_build: str = ""
 
     @property
     def logged_in(self) -> bool:
@@ -200,6 +202,8 @@ class ModEntry:
     hold: bool = False
     favorite: bool = False
     note: str = ""
+    deps: Optional[list] = None
+    game_versions: list[str] = field(default_factory=list)
 
     @property
     def has_update(self) -> bool:
@@ -518,7 +522,8 @@ class Library:
         mod_cache = CACHE_DIR / str(entry.mod_id)
         if entry.file_id is not None and info["file_id"] != entry.file_id:
             self._keep_previous(entry)
-        archive = self.client.download(info["url"], mod_cache / "download" / info["filename"], progress)
+        archive = self.client.download(info["url"], mod_cache / "download" / info["filename"],
+                                       progress, md5=info.get("md5", ""))
         paks = self.extract_paks(archive, mod_cache / "paks")
         archive.unlink(missing_ok=True)
         entry.cached_paks = [str(p) for p in paks]
@@ -553,6 +558,7 @@ class Library:
         entry = ModEntry(mod_id=mod_id, game_id=game_id, name=mod.get("name", slug),
                          slug=slug, url=mod.get("profile_url") or "", mode=mode,
                          approval=approval_of(mod))
+        self._remember_meta(entry, mod, self.client)
         log(tr("lib.downloading"))
         self._download(entry, mod, progress)
         self._copy_to_game(entry)
@@ -970,8 +976,7 @@ class Library:
                      progress: Optional[Callable[[int, int], None]], cache_ok: bool) -> Optional[str]:
         mod = client.get_mod_by_id(e.game_id, e.mod_id)
         new_id = (mod.get("modfile") or {}).get("id")
-        e.name = mod.get("name") or e.name
-        e.approval = approval_of(mod) or e.approval
+        self._remember_meta(e, mod, client)
         is_new = e.file_id is not None and new_id != e.file_id and not e.hold
         if is_new or not cache_ok or e.file_id is None:
             self._download(e, mod, progress)
@@ -1004,8 +1009,7 @@ class Library:
                         raise ModioError(tr("err.no_token"), status=401)
                     mod = client.get_mod_by_id(e.game_id, e.mod_id)
                     mf = mod.get("modfile") or {}
-                    e.name = mod.get("name") or e.name
-                    e.approval = approval_of(mod) or e.approval
+                    self._remember_meta(e, mod, client)
                     new = e.file_id is not None and mf.get("id") not in (None, e.file_id)
                     e.latest_version = (mf.get("version") or "?") if new else ""
             except Exception as err:
@@ -1015,6 +1019,70 @@ class Library:
                 report["updates"].append(e.name)
         self.save()
         return report
+
+    @staticmethod
+    def _remember_meta(e: ModEntry, mod: dict, client: Optional[ModioClient]) -> None:
+        e.name = mod.get("name") or e.name
+        e.approval = approval_of(mod) or e.approval
+        e.game_versions = game_versions_of(mod)
+        if "dependencies" in mod and not mod.get("dependencies"):
+            e.deps = []
+            return
+        if client is None:
+            return
+        try:
+            e.deps = [dependency_info(d) for d in client.dependencies(e.game_id, e.mod_id)]
+        except (ModioError, KeyError, TypeError, ValueError):
+            pass
+
+    def missing_dependencies(self, states: Optional[dict[int, bool]] = None) -> dict[int, list[dict]]:
+        states = states or {}
+        folder = self.folders.get(self.active_folder, {})
+        on = {i for i in folder if i in self.mods and states.get(i, self.mods[i].enabled)}
+        out: dict[int, list[dict]] = {}
+        for i in on:
+            missing = [d for d in self.mods[i].deps or [] if d["id"] not in on]
+            if missing:
+                out[i] = missing
+        return out
+
+    def game_build(self) -> str:
+        try:
+            steamapps = self.paks_dir().parents[4]
+        except (IndexError, ModioError, OSError):
+            return ""
+        manifest = steamapps / f"appmanifest_{game.STEAM_APP_ID}.acf"
+        try:
+            m = re.search(r'"buildid"\s+"(\d+)"', manifest.read_text(errors="ignore"))
+        except OSError:
+            return ""
+        return m.group(1) if m else ""
+
+    def game_update_check(self) -> bool:
+        build = self.game_build()
+        if not build or build == self.config.game_build:
+            return False
+        first = not self.config.game_build
+        self.config.game_build = build
+        self.config.save()
+        return not first
+
+    def outdated_mods(self) -> tuple[str, list[ModEntry]]:
+        gid = KNOWN_GAMES[DEFAULT_GAME]
+        versions = [t for g in self.client.game_tags(gid) if "version" in g.get("name", "").lower()
+                    for t in g.get("tags", [])]
+        versions = [v for v in versions if version_key(v)]
+        if not versions:
+            return "", []
+        latest = max(versions, key=version_key)
+        ids = [e.mod_id for e in self.folder_mods() if e.enabled and e.source != SOURCE_FILE]
+        for mod in self.client.mods_by_ids(gid, ids) if ids else []:
+            e = self.mods.get(int(mod["id"]))
+            if e:
+                e.game_versions = game_versions_of(mod)
+        self.save()
+        old = [self.mods[i] for i in ids if latest not in self.mods[i].game_versions]
+        return latest, sorted(old, key=lambda e: e.name.lower())
 
     def apply(self, wanted: dict[int, bool],
               progress: Optional[Callable[[int, int], None]] = None,

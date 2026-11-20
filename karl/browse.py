@@ -315,8 +315,7 @@ class ModCard(tk.Frame):
                          width=CARD_W)
         self.tab = tab
         self.mod = mod
-        url = mod.get("profile_url") or ""
-        open_page = (lambda e: webbrowser.open(url)) if url else (lambda e: None)
+        open_page = lambda e: tab.open_details(mod)
 
         holder = tk.Frame(self, width=IMG_W, height=IMG_H, bg="#0d0c0b")
         holder.pack_propagate(False)
@@ -652,6 +651,9 @@ class BrowseTab(tk.Frame):
             self.app.logout(expired=True)
             return
         self.live_lbl.configure(text=tr("browse.error", msg=msg), fg="#e05a4f")
+
+    def open_details(self, mod: dict):
+        self.app.open_details(int(mod.get("game_id") or self.game_id or 0), int(mod["id"]), mod)
 
     def tag_text(self, tag: str) -> str:
         for g in self.groups:

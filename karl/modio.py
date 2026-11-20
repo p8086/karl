@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import urllib.error
@@ -145,6 +146,24 @@ class ModioClient:
     def get_modfile(self, game_id: int, mod_id: int, file_id: int) -> dict:
         return self._json("GET", f"/games/{game_id}/mods/{mod_id}/files/{file_id}")
 
+    def list_modfiles(self, game_id: int, mod_id: int, limit: int = 10) -> list[dict]:
+        res = self._json("GET", f"/games/{game_id}/mods/{mod_id}/files",
+                         {"_sort": "-date_added", "_limit": limit})
+        return res.get("data", [])
+
+    def dependencies(self, game_id: int, mod_id: int) -> list[dict]:
+        res = self._json("GET", f"/games/{game_id}/mods/{mod_id}/dependencies")
+        return res.get("data", [])
+
+    def mods_by_ids(self, game_id: int, ids: list[int]) -> list[dict]:
+        out: list[dict] = []
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i + 100]
+            page, _ = self.list_mods(game_id, {"id-in": ",".join(str(x) for x in chunk),
+                                               "_limit": 100})
+            out.extend(page)
+        return out
+
     def me(self) -> dict:
         return self._json("GET", "/me")
 
@@ -189,9 +208,11 @@ class ModioClient:
         self._json("DELETE", f"/games/{game_id}/mods/{mod_id}/subscribe")
 
     def download(self, url: str, dest: Path,
-                 progress: Optional[Callable[[int, int], None]] = None) -> Path:
+                 progress: Optional[Callable[[int, int], None]] = None,
+                 md5: str = "") -> Path:
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(dest.suffix + ".part")
+        digest = hashlib.md5()
         with self._open("GET", url) as resp, open(tmp, "wb") as out:
             total = int(resp.headers.get("Content-Length") or 0)
             done = 0
@@ -200,9 +221,13 @@ class ModioClient:
                 if not chunk:
                     break
                 out.write(chunk)
+                digest.update(chunk)
                 done += len(chunk)
                 if progress:
                     progress(done, total)
+        if md5 and digest.hexdigest().lower() != md5.strip().lower():
+            tmp.unlink(missing_ok=True)
+            raise ModioError(tr("err.md5", name=dest.name))
         tmp.replace(dest)
         return dest
 
@@ -244,4 +269,24 @@ def modfile_info(mod: dict) -> dict:
         "filename": mf.get("filename") or f"{mod.get('name_id', 'mod')}.zip",
         "url": dl["binary_url"],
         "size": mf.get("filesize") or 0,
+        "md5": (mf.get("filehash") or {}).get("md5") or "",
     }
+
+
+VERSION_TAG_RE = re.compile(r"^\d+(?:\.\d+)+$")
+
+
+def version_key(v: str) -> tuple:
+    return tuple(int(x) for x in v.split(".") if x.isdigit())
+
+
+def game_versions_of(mod: dict) -> list[str]:
+    return sorted({t.get("name", "") for t in mod.get("tags") or []
+                   if VERSION_TAG_RE.match(t.get("name", ""))}, key=version_key)
+
+
+def dependency_info(dep: dict) -> dict:
+    mid = int(dep.get("mod_id") or dep.get("id"))
+    slug = dep.get("name_id") or ""
+    url = dep.get("profile_url") or (f"https://mod.io/g/drg/m/{slug}" if slug else "")
+    return {"id": mid, "name": dep.get("name") or slug or str(mid), "url": url}
