@@ -208,8 +208,6 @@ On Linux it is the same folder, inside `steamapps/common/` of your Steam library
 
 The game counts mods as "its own" in two places: your **mod.io account subscriptions** (it downloads them again itself) and the **folders in `FSD\Mods`**. To keep it at 0 mods, at startup and at every **Install and save** Karl checks both and offers to empty them: it cancels the subscriptions and moves the folders to `FSD\_karl_backup_mods` (deleting nothing). All those mods stay in Karl and Karl installs them. If you build your own mod, output it to another folder and add it with **Add .pak file…**: when you rebuild it, **Install and save** reimports it.
 
-At startup Karl moves into `Content\Paks` the mods that older versions put in `FSD\Mods` and converts the ones that were in subscription mode.
-
 **Non-Verified mods.** The Category column shows Verified, Approved or Sandbox. Keep in mind that with Karl the game doesn't flag Approved and Sandbox mods to the other players in the lobby, and Sandbox mods write to your normal save instead of the sandbox one.
 
 ### Blueprint mods: Karl's integration

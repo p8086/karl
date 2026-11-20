@@ -4,7 +4,6 @@ import sys
 BG = "#121110"
 PANEL = "#1e1c1a"
 CARD = "#262321"
-CARD_HOVER = "#2f2b28"
 BORDER = "#3a3532"
 CHIP = "#3a3532"
 BUTTON = "#33302d"

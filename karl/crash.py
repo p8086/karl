@@ -80,13 +80,3 @@ def find_crash(paks_dir: Path, since: float) -> Optional[dict]:
             found["files"].append(str(d))
             found["time"] = max(found["time"], _mtime(d))
     return found if found["files"] else None
-
-
-def mods_started(ue4ss_log: Path, since: float) -> Optional[bool]:
-    if _mtime(ue4ss_log) < since:
-        return None
-    try:
-        text = ue4ss_log.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    return re.search(r"\[Karl\] \w+: avviate \d+ mod", text) is not None

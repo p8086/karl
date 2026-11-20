@@ -22,7 +22,7 @@ from PIL import Image
 
 from karl import browse, gui, library
 from karl.browse import LIB_ALL, LIB_NOT_SUB, LIB_SUB, build_query
-from karl.library import MODE_LOCAL, MODE_SUBSCRIBE, Config, Library
+from karl.library import Config, Library
 
 TAGS = [
     {"name": "Game Version", "type": "checkboxes", "tags": ["1.38", "1.39", "1.40"],
@@ -102,9 +102,6 @@ class FakeModio:
 
     def subscribed_mods(self, gid):
         return [m for m in FakeModio.mods if m["id"] in FakeModio.subs]
-
-    def subscribe(self, gid, mid):
-        FakeModio.subs.add(mid)
 
     def unsubscribe(self, gid, mid):
         FakeModio.subs.discard(mid)
@@ -201,28 +198,6 @@ class QueryTests(unittest.TestCase):
         self.assertTrue(browse.shorten("a " * 200, 20).endswith("…"))
 
 
-class SyncTests(unittest.TestCase):
-    def setUp(self):
-        for f in (library.LIBRARY_FILE, library.FOLDERS_FILE, library.SNAPSHOTS_FILE):
-            if f.exists():
-                f.unlink()
-        self.lib = Library(Config(token="t", paks_dir=str(TMP), default_mode=MODE_SUBSCRIBE),
-                           client_factory=FakeModio)
-
-    def test_sync(self):
-        lib = self.lib
-        lib.mods[99] = library.ModEntry(99, 2475, "Locale", "loc", "", MODE_LOCAL)
-        self.assertTrue(lib.sync_subscriptions([make_mod(1), make_mod(2)]))
-        self.assertEqual(lib.mods[1].mode, MODE_SUBSCRIBE)
-        self.assertTrue(lib.mods[1].enabled)
-        self.assertTrue(lib.sync_subscriptions([make_mod(2)]))
-        self.assertFalse(lib.mods[1].enabled)
-        self.assertTrue(lib.mods[99].enabled)
-        self.assertFalse(lib.sync_subscriptions([make_mod(2)]))
-        self.assertTrue(lib.sync_subscriptions([make_mod(1), make_mod(2)]))
-        self.assertTrue(lib.mods[1].enabled)
-
-
 class GuiBase(unittest.TestCase):
     def setUp(self):
         for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
@@ -283,10 +258,8 @@ class GuiTests(GuiBase):
         self.assertEqual(len(b.cards), browse.PAGE_SIZE)
         self.assertEqual(b.count_lbl.kw["text"], "60 mod")
         self.assertEqual(b.cards[0].img.kw["image"], ("foto", (browse.IMG_W, browse.IMG_H)))
-        self.assertEqual(b.sub_ids, set())
         self.assertNotIn(5, app.lib.mods)
-        self.assertIsNone(b.mod_state(5))
-        self.assertIsNone(b.mod_state(1))
+        self.assertNotIn(1, b.library_ids())
         self.assertEqual(len(b.sidebar.vars["Type"]), 4)
 
         b._maybe_load_more(0.99)
@@ -297,11 +270,10 @@ class GuiTests(GuiBase):
         self.assertEqual(len(b.cards), 60)
         self.assertFalse(b.has_more())
 
-        b.cards[0].toggle_subscription()
-        pump(app)
+        app.lib.add_mod_object(b.cards[0].mod)
+        app.refresh_mine()
         self.assertNotIn(1, FakeModio.subs)
-        self.assertEqual(app.lib.mods[1].mode, MODE_LOCAL)
-        self.assertEqual(b.mod_state(1), "installed")
+        self.assertIn(1, b.library_ids())
         self.assertTrue(self.installed("mod-1").exists())
         self.assertIn("1", app.mine.tree.get_children())
 
@@ -327,7 +299,7 @@ class GuiTests(GuiBase):
         b._auto_refresh()
         pump(app)
         self.assertNotIn(7, app.lib.mods)
-        self.assertIsNone(b.mod_state(7))
+        self.assertNotIn(7, b.library_ids())
         self.assertIn("aggiornato alle", b.live_lbl.kw["text"])
 
         subs_before = set(FakeModio.subs)
@@ -466,8 +438,8 @@ class FolderTests(GuiBase):
         app = gui.App()
         pump(app, 80)
         mine, lib = app.mine, app.lib
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
-        lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
+        lib.add("https://mod.io/g/drg/m/mod-31")
         mine.refresh()
         first = lib.active_folder
         self.assertEqual(mine.tree.get_children(), ["30", "31"])
@@ -529,7 +501,7 @@ class NewFeaturesTests(GuiBase):
         app = gui.App()
         pump(app, 80)
         mine, lib = app.mine, app.lib
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
         mine.refresh()
 
         mine.tree.click("30", column="#0", region="tree")
@@ -605,7 +577,7 @@ class UpdateCheckTests(GuiBase):
         app = gui.App()
         pump(app, 80)
         mine, lib = app.mine, app.lib
-        e = lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/mod-30")
         old_ver, old_file = e.version, e.file_id
         mod = next(m for m in FakeModio.mods if m["id"] == 30)
         orig = mod["modfile"]
@@ -666,7 +638,7 @@ class UpdateButtonTests(GuiBase):
         app = gui.App()
         pump(app, 80)
         mine = app.mine
-        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        app.lib.add("https://mod.io/g/drg/m/mod-30")
         pak = self.installed("mod-30")
         self.assertTrue(pak.exists())
         pak.unlink()
@@ -831,7 +803,7 @@ class ModioRequestTests(unittest.TestCase):
         try:
             c = modio.ModioClient("t")
             c.unsubscribe(2475, 1)
-            c.subscribe(2475, 1)
+            c.rate(2475, 1, 1)
             c.list_mods(2475, {"_limit": 1})
         finally:
             urllib.request.urlopen = real
@@ -872,27 +844,10 @@ class KarlInstallTests(GuiBase):
         app.check_modio_subscriptions()
         pump(app, 160)
         b, mine, lib = app.browse, app.mine, app.lib
-        self.assertEqual(app.config_.default_mode, MODE_LOCAL)
-
         self.assertEqual(FakeModio.subs, set())
-        self.assertEqual(lib.mods[5].mode, MODE_LOCAL)
         self.assertTrue(self.installed("mod-5").exists())
-        self.assertEqual(b.mod_state(5), "installed")
-
-        card = b.cards[0]
-        self.assertIsNone(b.mod_state(1))
-        card.toggle_subscription()
-        pump(app)
-        self.assertTrue(self.installed("mod-1").exists())
-        self.assertEqual(lib.mods[1].mode, MODE_LOCAL)
-        self.assertNotIn(1, FakeModio.subs)
-        self.assertEqual(b.mod_state(1), "installed")
-        self.assertIn("installata da Karl", app.status.get())
-        card.toggle_subscription()
-        pump(app)
-        self.assertNotIn(1, lib.mods)
-        self.assertFalse(self.installed("mod-1").exists())
-        self.assertIsNone(b.mod_state(1))
+        self.assertIn(5, b.library_ids())
+        self.assertNotIn(1, b.library_ids())
 
         FakeModio.subs.add(9)
         b._auto_refresh()
@@ -996,7 +951,6 @@ class LanguageTests(GuiBase):
         self.assertEqual(app.browse.sort.var.get(), "Alphabetical")
         self.assertEqual(app.browse.sort.key, "alpha")
         gui.SettingsDialog(app).save()
-        self.assertEqual(Config.load().default_mode, MODE_LOCAL)
         app.pool.shutdown(wait=True)
 
 
@@ -1044,8 +998,8 @@ class TimeMachineGuiTests(GuiBase):
         self.assertEqual(dlg.tree.get_children(), [])
         dlg.destroy()
 
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
-        lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
+        lib.add("https://mod.io/g/drg/m/mod-31")
         mine.refresh()
         mine.apply_changes()
         pump(app, 80)
@@ -1113,8 +1067,8 @@ class QualityTests(GuiBase):
         app = gui.App()
         pump(app, 80)
         mine, lib = app.mine, app.lib
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
-        lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
+        lib.add("https://mod.io/g/drg/m/mod-31")
         mine.refresh()
         self.assertEqual(mine.tree._rows["30"][4], "☆")
         mine.tree.click("30", column="#5")
@@ -1210,7 +1164,7 @@ class FeatureTests(GuiBase):
         app = self.make_app()
         mine, lib = app.mine, app.lib
         for i in (30, 31, 32):
-            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
         lib.set_note(31, "Rocket jump")
         mine.refresh()
         mine.search_var.set("31")
@@ -1230,7 +1184,7 @@ class FeatureTests(GuiBase):
     def test_details_from_my_mods_and_browse(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
         mine.refresh()
         mine.tree.__dict__["_hit"] = ("cell", "#1", "30")
         self.assertEqual(mine._on_double(types.SimpleNamespace(x=1, y=1)), "break")
@@ -1285,8 +1239,8 @@ class FeatureTests(GuiBase):
         old_tags = FakeModio.mods[34]["tags"]
         FakeModio.mods[34]["tags"] = [{"name": "1.39"}, {"name": "Verified"}]
         self.addCleanup(lambda: FakeModio.mods[34].__setitem__("tags", old_tags))
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
-        lib.add("https://mod.io/g/drg/m/mod-35", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
+        lib.add("https://mod.io/g/drg/m/mod-35")
         self.messages().clear()
         lib.game_update_check = lambda: False
         app.check_game_update()
@@ -1485,7 +1439,7 @@ class BatchFourGuiTests(GuiBase):
     def test_play_without_mods(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
         self.assertTrue(self.installed("mod-30").exists())
         state = {"running": False, "launched": 0}
         saved = (gui.game.is_running, gui.game.launch)
@@ -1527,7 +1481,7 @@ class BatchFourGuiTests(GuiBase):
         app = self.make_app()
         mine, lib = app.mine, app.lib
         for i in (30, 31, 32):
-            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
         lib.mods[31].added_at += 100
         mine.refresh()
         self.assertEqual(mine.tree._rows["30"][2], "3 B")
@@ -1579,8 +1533,8 @@ class BatchFourGuiTests(GuiBase):
     def test_removed_mods_warning(self):
         app = self.make_app()
         lib = app.lib
-        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
-        lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-30")
+        lib.add("https://mod.io/g/drg/m/mod-31")
         FakeModio.gone = {31}
         self.messages().clear()
         app.check_removed_mods()
@@ -1685,7 +1639,7 @@ class InstallsScaleGuiTests(GuiBase):
 
     def test_switch_installation_from_settings(self):
         app = self.make_app()
-        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        app.lib.add("https://mod.io/g/drg/m/mod-30")
         self.assertEqual(app.install_lbl.kw["text"], "")
         beta = Path(tempfile.mkdtemp()) / "Beta" / "FSD" / "Content" / "Paks"
         beta.mkdir(parents=True)
@@ -1855,7 +1809,7 @@ class CrashBisectNewsGuiTests(GuiBase):
 
     def test_crash_dialog_and_history_tab(self):
         app = self.make_app()
-        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        app.lib.add("https://mod.io/g/drg/m/mod-30")
         app.lib.history.add("session_ok", folder=app.lib.active_folder)
         app.lib.apply({30: False})
         dlg = gui.CrashDialog(app, {"time": 1700000000, "files": ["x"],
@@ -1872,7 +1826,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         app = self.make_app()
         lib = app.lib
         for i in (30, 31, 32, 33, 34):
-            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
         lib.apply({34: False})
         lib.mods[31].deps = [{"id": 30, "name": "Mod 30", "url": ""}]
         launched = []
@@ -1913,7 +1867,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         app = self.make_app()
         lib = app.lib
         for i in (30, 31):
-            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
         app.mine.open_bisect()
         app.bisect_win.next_test()
         pump(app)
@@ -1931,7 +1885,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         shown = []
         orig = gui.WhatsNewDialog
         self.patch(gui, "WhatsNewDialog", lambda *a, **k: shown.append(orig(*a, **k)))
-        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        app.lib.add("https://mod.io/g/drg/m/mod-30")
         FakeModio.mods[29]["modfile"]["id"] = 555
         FakeModio.mods[29]["modfile"]["version"] = "2.0"
         self.addCleanup(lambda: FakeModio.mods[29]["modfile"].update(id=129, version="1.0"))

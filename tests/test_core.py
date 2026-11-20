@@ -13,7 +13,7 @@ os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from karl import library
-from karl.library import MODE_LOCAL, MODE_SUBSCRIBE, Config, Library
+from karl.library import Config, Library
 from karl.modio import parse_mod_url
 
 
@@ -103,7 +103,7 @@ class Tests(unittest.TestCase):
             parse_mod_url("https://example.com/mod.pak")
 
     def test_local_install_toggle_remove(self):
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod")
         pak = self.inst("test-mod")
         self.assertTrue(pak.exists())
         self.assertEqual(pak.read_bytes(), b"PAK1.0")
@@ -119,7 +119,7 @@ class Tests(unittest.TestCase):
         self.assertTrue((self.paks / "FSD-WindowsNoEditor.pak").exists())
 
     def test_update_local(self):
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(self.lib.check_updates(), [])
         FakeClient.version = {"file_id": 2, "v": "2.0"}
         self.assertEqual(self.lib.check_updates(), ["Test Mod"])
@@ -127,8 +127,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.lib.mods[42].version, "2.0")
 
     def test_never_subscribes(self):
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_SUBSCRIBE)
-        self.assertEqual(e.mode, MODE_LOCAL)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(FakeClient.subs, set())
         self.assertTrue((self.inst("test-mod")).exists())
         self.assertFalse(self.mods.exists())
@@ -137,32 +136,6 @@ class Tests(unittest.TestCase):
         self.lib.remove(e.mod_id)
         self.assertEqual(FakeClient.subs, set())
 
-    def test_migrate_legacy(self):
-        import json, shutil
-        shutil.rmtree(library.CONFIG_DIR, ignore_errors=True)
-        shutil.rmtree(library.CACHE_DIR, ignore_errors=True)
-        old_cfg = library.CONFIG_DIR.parent / "drgmm"
-        old_cache = library.CACHE_DIR.parent / "drgmm"
-        (old_cache / "42" / "paks").mkdir(parents=True)
-        (old_cache / "42" / "paks" / "Test.pak").write_bytes(b"PAK1.0")
-        old_cfg.mkdir(parents=True)
-        (old_cfg / "config.json").write_text(json.dumps({"token": "vecchio", "paks_dir": str(self.paks)}))
-        (self.paks / "drgmm_test-mod_P.pak").write_bytes(b"PAK1.0")
-        (old_cfg / "mods.json").write_text(json.dumps([{
-            "mod_id": 42, "game_id": 2475, "name": "Test Mod", "slug": "test-mod",
-            "url": "u", "mode": MODE_LOCAL, "file_id": 1, "version": "1.0",
-            "cached_paks": [str(old_cache / "42" / "paks" / "Test.pak")],
-            "installed_paks": ["drgmm_test-mod_P.pak"]}]))
-        cfg = Config.load()
-        self.assertEqual(cfg.token, "vecchio")
-        lib = Library(cfg, client_factory=FakeClient)
-        self.assertTrue(Path(lib.mods[42].cached_paks[0]).exists())
-        lib.set_enabled(42, False)
-        self.assertFalse((self.paks / "drgmm_test-mod_P.pak").exists())
-        lib.set_enabled(42, True)
-        self.assertTrue((self.inst("test-mod")).exists())
-        shutil.rmtree(old_cfg)
-        shutil.rmtree(old_cache)
 
     def test_local_file(self):
         src = Path(tempfile.mkdtemp())
@@ -202,7 +175,7 @@ class Tests(unittest.TestCase):
     def test_update_all(self):
         import shutil
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         pak = self.inst("test-mod")
         src = Path(tempfile.mkdtemp())
         mine = src / "MiaMod.pak"
@@ -258,26 +231,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(r["updated"], ["MiaMod"])
         lib.config.token = "t"
 
-    def test_migrate_to_paks(self):
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
-        new = self.inst("test-mod")
-        self.lib._remove_from_game(e)
-        old = self.mods / "karl_test-mod" / "karl_test-mod.pak"
-        old.parent.mkdir(parents=True)
-        old.write_bytes(b"PAK1.0")
-        e.installed_paks = ["karl_test-mod/karl_test-mod.pak"]
-        self.lib.mods[7] = library.ModEntry(7, 2475, "Iscritta", "iscritta", "", MODE_SUBSCRIBE)
-        self.assertEqual(self.lib.migrate_install_location(), 2)
-        self.assertFalse(old.exists() or old.parent.exists())
-        self.assertEqual(new.read_bytes(), b"PAK1.0")
-        self.assertEqual(self.lib.mods[7].mode, MODE_LOCAL)
-        self.assertEqual(self.lib.needs_install(), [7])
-        self.assertEqual(self.lib.migrate_install_location(), 0)
-        self.assertTrue((self.paks / "FSD-WindowsNoEditor.pak").exists())
-
     def test_folders(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         src = self.paks.parent / "src"
         src.mkdir()
         (src / "MiaHUD.pak").write_bytes(b"HUD")
@@ -326,7 +282,7 @@ class Tests(unittest.TestCase):
     def test_time_machine(self):
         lib = self.lib
         tm = lib.time_machine
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         src = self.paks.parent / "tm"
         src.mkdir()
         (src / "Hud.pak").write_bytes(b"hud")
@@ -389,7 +345,7 @@ class Tests(unittest.TestCase):
 
     def test_favorites_and_notes(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertTrue(lib.set_favorite([e.mod_id]))
         lib.set_note(e.mod_id, "  solo   con amici ")
         again = Library(self.cfg, client_factory=FakeClient)
@@ -399,7 +355,7 @@ class Tests(unittest.TestCase):
 
     def test_profile_export_import(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         src = self.paks.parent / "prof"
         src.mkdir()
         (src / "Mio.pak").write_bytes(b"mio")
@@ -440,7 +396,7 @@ class Tests(unittest.TestCase):
 
     def test_no_network_when_switching(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         calls = []
         orig = FakeClient.get_mod_by_id
         FakeClient.get_mod_by_id = lambda self, g, m: calls.append(m) or orig(self, g, m)
@@ -465,7 +421,7 @@ class Tests(unittest.TestCase):
 
     def test_cache_cleanup(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         FakeClient.version = {"file_id": 2, "v": "2.0"}
         lib.find_updates()
         lib.update_all(install_updates=True)
@@ -505,7 +461,7 @@ class Tests(unittest.TestCase):
 
     def test_rollback(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         pak = self.inst("test-mod")
         self.assertFalse(lib.has_previous(e.mod_id))
         FakeClient.version = {"file_id": 2, "v": "2.0"}
@@ -541,7 +497,7 @@ class Tests(unittest.TestCase):
 
     def test_share_folder(self):
         lib = self.lib
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         src = self.paks.parent / "share"
         src.mkdir()
         (src / "Mia.pak").write_bytes(b"x")
@@ -567,26 +523,10 @@ class Tests(unittest.TestCase):
         name2, _ = friend.import_folder(code)
         self.assertNotEqual(name, name2)
 
-    def test_rename_old_paks(self):
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
-        current = self.inst("test-mod")
-        for old_name in ("karl_test-mod_P.pak", "FSD-karl_test-mod_P.pak"):
-            old = self.paks / old_name
-            self.inst("test-mod").rename(old)
-            e.installed_paks = [old_name]
-            self.assertGreater(self.lib.fix_installed_paks(), 0)
-            self.assertFalse(old.exists())
-            self.lib.update_all()
-            self.assertEqual(self.inst("test-mod"), current)
-            self.assertTrue(current.exists())
-        self.assertIn("fsd-windowsnoeditor", current.name.lower())
-        self.assertNotEqual(current.name.lower(), "fsd-windowsnoeditor.pak")
-        self.lib.remove(e.mod_id)
-        self.assertEqual([p.name for p in self.paks.glob("*karl_*")], [])
 
     def test_load_order(self):
         lib = self.lib
-        a = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        a = lib.add("https://mod.io/g/drg/m/test-mod")
         src = self.paks.parent / "ord"
         src.mkdir()
         (src / "B.pak").write_bytes(b"b")
@@ -676,7 +616,7 @@ class NewFeatureTests(unittest.TestCase):
         info = modio.modfile_info({"modfile": {"id": 3, "filehash": {"md5": "ABC"},
                                                "download": {"binary_url": "u"}}})
         self.assertEqual(info["md5"], "ABC")
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(FakeClient.md5_seen, [""])
 
         payload = b"contenuto della mod"
@@ -704,7 +644,7 @@ class NewFeatureTests(unittest.TestCase):
 
     def test_dependencies_reported_not_installed(self):
         FakeClient.deps = {42: [{"mod_id": 7, "name": "DRGLib", "name_id": "drglib"}]}
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(e.deps, [{"id": 7, "name": "DRGLib", "url": "https://mod.io/g/drg/m/drglib"}])
         self.assertNotIn(7, self.lib.mods)
         self.assertEqual(list(self.lib.missing_dependencies()), [42])
@@ -719,7 +659,7 @@ class NewFeatureTests(unittest.TestCase):
         saved = FakeClient._mod
         FakeClient._mod = lambda self: dict(saved(self), dependencies=False)
         self.addCleanup(setattr, FakeClient, "_mod", saved)
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(e.deps, [])
         self.assertEqual(calls, [])
 
@@ -736,7 +676,7 @@ class NewFeatureTests(unittest.TestCase):
         self.assertFalse(self.lib.game_update_check())
 
     def test_outdated_mods(self):
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         FakeClient.game_tags = lambda self, g: [
             {"name": "Game Version", "tags": ["1.38", "1.39", "1.40"]},
             {"name": "Type", "tags": ["QoL"]}]
@@ -785,7 +725,7 @@ class FolderBugTests(unittest.TestCase):
         self.lib = Library(self.cfg, client_factory=FakeClient)
 
     def test_delete_active_folder_leaves_no_blank_folder(self):
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         first = self.lib.active_folder
         code, _ = self.lib.export_folder()
         imported, _ = self.lib.import_folder(code)
@@ -801,7 +741,7 @@ class FolderBugTests(unittest.TestCase):
         self.assertIn(42, self.lib.mods)
 
     def test_blank_folder_removed_on_load(self):
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         first = self.lib.active_folder
         library.FOLDERS_FILE.write_text(json.dumps({
             "versione": 2, "attiva": "",
@@ -915,7 +855,7 @@ class BatchFourTests(unittest.TestCase):
         return sorted(self.paks.glob(f"FSD-WindowsNoEditor_karl_{slug}_*_P.pak"))
 
     def test_tags_size_dates(self):
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertGreater(e.added_at, 0)
         self.assertGreater(e.updated_at, 0)
         self.assertEqual(self.lib.mod_size(e), len(b"PAK1.0"))
@@ -932,7 +872,7 @@ class BatchFourTests(unittest.TestCase):
         self.assertEqual(self.lib.mods[42].tags, ["HUD", "audio", "Da provare"])
 
     def test_check_removed(self):
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         alive = [42]
         FakeClient.mods_by_ids = lambda self, g, ids: [{"id": i} for i in ids if i in alive]
         self.addCleanup(delattr, FakeClient, "mods_by_ids")
@@ -946,7 +886,7 @@ class BatchFourTests(unittest.TestCase):
         self.assertFalse(self.lib.mods[42].removed)
 
     def test_vanilla(self):
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(len(self.inst("test-mod")), 1)
         self.assertEqual(self.lib.start_vanilla(), 1)
         self.assertEqual(self.inst("test-mod"), [])
@@ -958,7 +898,7 @@ class BatchFourTests(unittest.TestCase):
 
     def test_diagnostics(self):
         from karl import diagnostics
-        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.lib.add("https://mod.io/g/drg/m/test-mod")
         FakeClient.me = lambda self: {"username": "pe8086"}
         self.addCleanup(delattr, FakeClient, "me")
         items = diagnostics.run(self.lib)
@@ -1007,7 +947,7 @@ class InstallsAndScaleTests(unittest.TestCase):
         self.assertEqual([i["id"] for i in cfg.installs], ["main"])
         self.assertEqual(cfg.installs[0]["paks_dir"], str(self.main_paks))
         lib = Library(cfg, client_factory=FakeClient)
-        lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/test-mod")
         main_cache = library.MODS_CACHE
         self.assertTrue(list(self.main_paks.glob("*karl_test-mod*")))
 
@@ -1019,7 +959,7 @@ class InstallsAndScaleTests(unittest.TestCase):
         self.assertNotEqual(library.MODS_CACHE, main_cache)
         self.assertIn("installs", str(library.LIBRARY_FILE))
         FakeClient.version = {"file_id": 2, "v": "2.0"}
-        e = lib2.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib2.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(e.version, "2.0")
         self.assertTrue(str(e.cached_paks[0]).startswith(str(library.MODS_CACHE)))
         self.assertTrue(list(self.beta_paks.glob("*karl_test-mod*")))
@@ -1071,7 +1011,7 @@ class ProtonFixTests(unittest.TestCase):
         paks.mkdir(parents=True)
         cfg = Config(token="t", paks_dir=str(paks))
         lib = Library(cfg, client_factory=FakeClient)
-        e = lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
         e.name = "a &amp; b"
         lib.save()
         self.assertEqual(Library(cfg, client_factory=FakeClient).mods[42].name, "a & b")
@@ -1098,7 +1038,7 @@ class HistoryCrashBisectTests(unittest.TestCase):
 
     def test_history_events(self):
         from karl.history import History
-        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod")
         FakeClient.version = {"file_id": 2, "v": "2.0"}
         self.lib.find_updates()
         report = self.lib.apply({})
@@ -1155,12 +1095,6 @@ class HistoryCrashBisectTests(unittest.TestCase):
         (win64 / "crash_2026_11_20_15_09_22.dmp").write_bytes(b"x")
         self.assertTrue(crash.find_crash(self.paks, since)["ue4ss"])
         self.assertIsNone(crash.find_crash(self.paks, _t.time() + 60))
-        ue = win64 / "UE4SS.log"
-        ue.write_text("[Karl] KarlLoader 2.0: 21 mod con blueprint\n", encoding="utf-8")
-        self.assertFalse(crash.mods_started(ue, since))
-        ue.write_text("[Lua] [Karl] spacerig: avviate 21 mod\n", encoding="utf-8")
-        self.assertTrue(crash.mods_started(ue, since))
-        self.assertIsNone(crash.mods_started(ue, _t.time() + 60))
 
     def test_bisect(self):
         from karl.bisect import Bisect

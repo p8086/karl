@@ -206,14 +206,6 @@ class ModioClient:
             if not page or offset >= int(res.get("result_total", 0)):
                 return out
 
-    def subscribe(self, game_id: int, mod_id: int) -> None:
-        try:
-            self._json("POST", f"/games/{game_id}/mods/{mod_id}/subscribe", data={})
-        except ModioError as e:
-            if e.status == 400 and "subscribed" in e.api_message.lower():
-                return
-            raise
-
     def unsubscribe(self, game_id: int, mod_id: int) -> None:
         self._json("DELETE", f"/games/{game_id}/mods/{mod_id}/subscribe")
 

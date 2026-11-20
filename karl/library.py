@@ -11,7 +11,7 @@ import time
 import zipfile
 import zlib
 from datetime import datetime
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -51,34 +51,11 @@ def use_install(install_id: str) -> None:
     SNAPSHOT_BLOBS = cache_dir / "istantanee"
     MODS_CACHE = cache_dir
 
-PAK_PREFIX = "karl_"
-LEGACY_NAME = "drgmm"
-GAME_PAK_PREFIX = "FSD-WindowsNoEditor_" + PAK_PREFIX
-OLD_GAME_PAK_PREFIX = "FSD-" + PAK_PREFIX
-OWNED_PREFIXES = (GAME_PAK_PREFIX, OLD_GAME_PAK_PREFIX, PAK_PREFIX, f"{LEGACY_NAME}_")
+GAME_PAK_PREFIX = "FSD-WindowsNoEditor_karl_"
 
-
-def migrate_legacy() -> None:
-    old_cfg = CONFIG_DIR.parent / LEGACY_NAME
-    old_cache = CACHE_DIR.parent / LEGACY_NAME
-    if CONFIG_DIR.exists() or not old_cfg.is_dir():
-        return
-    shutil.copytree(old_cfg, CONFIG_DIR)
-    if old_cache.is_dir() and not CACHE_DIR.exists():
-        shutil.copytree(old_cache, CACHE_DIR)
-    lib = CONFIG_DIR / "mods.json"
-    if lib.exists():
-        mods = json.loads(lib.read_text())
-        for m in mods:
-            m["cached_paks"] = [str(CACHE_DIR / Path(p).relative_to(old_cache))
-                                if Path(p).is_relative_to(old_cache) else p
-                                for p in m.get("cached_paks", [])]
-        lib.write_text(json.dumps(mods, indent=2))
 
 GAME_SUBPATH = Path("steamapps/common/Deep Rock Galactic/FSD/Content/Paks")
 
-MODE_SUBSCRIBE = "iscrizione"
-MODE_LOCAL = "locale"
 
 APPROVAL_TAGS = ("Verified", "Approved", "Sandbox")
 
@@ -113,13 +90,11 @@ def extract_local_paths(text: str) -> tuple[list[str], list[str]]:
 class Config:
     token: str = ""
     paks_dir: str = ""
-    default_mode: str = MODE_LOCAL
     username: str = ""
     avatar_url: str = ""
     profile_url: str = ""
     refresh_seconds: int = 60
     language: str = "auto"
-    install_v2: bool = False
     ignore_foreign_loader: bool = False
     ignore_modio_subs: bool = False
     ignore_integration: bool = False
@@ -150,7 +125,6 @@ class Config:
     @classmethod
     def load(cls) -> "Config":
         cfg = cls()
-        migrate_legacy()
         if CONFIG_FILE.exists():
             data = json.loads(CONFIG_FILE.read_text())
             for k, v in data.items():
@@ -160,11 +134,6 @@ class Config:
             found = find_paks_dir()
             cfg.paks_dir = str(found) if found else ""
         cfg.ensure_installs()
-        if not cfg.install_v2:
-            cfg.default_mode = MODE_LOCAL
-            cfg.install_v2 = True
-            if CONFIG_FILE.exists():
-                cfg.save()
         return cfg
 
     def save(self) -> None:
@@ -269,7 +238,6 @@ class ModEntry:
     name: str
     slug: str
     url: str
-    mode: str
     enabled: bool = True
     file_id: Optional[int] = None
     version: str = ""
@@ -299,6 +267,9 @@ class ModEntry:
         return bool(self.latest_version)
 
 
+ENTRY_KEYS = {f.name for f in fields(ModEntry)}
+
+
 class Library:
     def __init__(self, config: Config, client_factory: Callable[[str], ModioClient] = ModioClient):
         self.config = config
@@ -317,7 +288,7 @@ class Library:
     def load(self) -> None:
         if LIBRARY_FILE.exists():
             for raw in json.loads(LIBRARY_FILE.read_text()):
-                e = ModEntry(**raw)
+                e = ModEntry(**{k: v for k, v in raw.items() if k in ENTRY_KEYS})
                 e.name = html.unescape(e.name)
                 self.mods[e.mod_id] = e
         self._load_folders()
@@ -517,10 +488,6 @@ class Library:
     def _installed_path(self, name: str) -> Path:
         return self.mods_dir() / name if "/" in name else self.paks_dir() / name
 
-    @staticmethod
-    def _is_legacy(entry: ModEntry) -> bool:
-        return any("/" in n for n in entry.installed_paks)
-
     def _copy_to_game(self, entry: ModEntry) -> None:
         paks = self.paks_dir()
         self._remove_from_game(entry)
@@ -537,37 +504,11 @@ class Library:
         except (OSError, PakError, struct.error):
             return False
 
-    def fix_installed_paks(self) -> int:
-        fixed = 0
-        paks = self.paks_dir()
-        for e in self.mods.values():
-            names = []
-            for name in e.installed_paks:
-                old = None
-                if "/" not in name and name.startswith(OLD_GAME_PAK_PREFIX):
-                    old = name[len(OLD_GAME_PAK_PREFIX):]
-                elif "/" not in name and name.startswith(PAK_PREFIX):
-                    old = name[len(PAK_PREFIX):]
-                if old is not None:
-                    new = GAME_PAK_PREFIX + old
-                    if (paks / name).is_file() and not (paks / new).exists():
-                        (paks / name).rename(paks / new)
-                    if (paks / new).is_file():
-                        name = new
-                        fixed += 1
-                names.append(name)
-                if "/" not in name and self._make_safe(paks / name):
-                    fixed += 1
-            e.installed_paks = names
-        if fixed:
-            self._save_list()
-        return fixed
-
     def _remove_from_game(self, entry: ModEntry) -> None:
         if not entry.installed_paks:
             return
         for name in entry.installed_paks:
-            if not name.split("/")[0].startswith(OWNED_PREFIXES):
+            if not name.split("/")[0].startswith(GAME_PAK_PREFIX):
                 continue
             path = self._installed_path(name)
             path.unlink(missing_ok=True)
@@ -605,23 +546,6 @@ class Library:
             shutil.move(str(path), str(dest))
         return backup
 
-    def migrate_install_location(self) -> int:
-        try:
-            self.fix_installed_paks()
-        except ModioError:
-            pass
-        moved = len(self.convert_to_local())
-        for e in self.mods.values():
-            if e.installed_paks and self._is_legacy(e):
-                if e.enabled and e.cached_paks and all(Path(p).is_file() for p in e.cached_paks):
-                    self._copy_to_game(e)
-                else:
-                    self._remove_from_game(e)
-                moved += 1
-        if moved:
-            self.save()
-        return moved
-
     def _download(self, entry: ModEntry, mod: dict,
                   progress: Optional[Callable[[int, int], None]]) -> None:
         info = modfile_info(mod)
@@ -644,33 +568,29 @@ class Library:
                                   "name": entry.name, "old": old_version, "new": entry.version,
                                   "file_id": entry.file_id})
 
-    def add(self, url: str, mode: Optional[str] = None,
+    def add(self, url: str,
             progress: Optional[Callable[[int, int], None]] = None,
             log: Callable[[str], None] = lambda s: None) -> ModEntry:
         game_slug, mod_slug = parse_mod_url(url)
         log(tr("lib.searching", slug=mod_slug))
         mod = self.client.get_mod(game_slug, mod_slug)
-        return self.add_mod_object(mod, mode, progress=progress, log=log)
+        return self.add_mod_object(mod, progress=progress, log=log)
 
-    def add_mod_object(self, mod: dict, mode: Optional[str] = None,
+    def add_mod_object(self, mod: dict,
                        progress: Optional[Callable[[int, int], None]] = None,
                        log: Callable[[str], None] = lambda s: None) -> ModEntry:
-        mode = MODE_LOCAL
         mod_id, game_id = int(mod["id"]), int(mod["game_id"])
         slug = mod.get("name_id") or str(mod_id)
-
-        if mod_id in self.mods:
-            old = self.mods[mod_id]
-            if old.mode == mode:
-                if not old.enabled:
-                    self.set_enabled(mod_id, True, log=log)
-                else:
-                    log(tr("lib.already", name=old.name))
-                return old
-            self.remove(mod_id, log=log)  
+        old = self.mods.get(mod_id)
+        if old is not None:
+            if not old.enabled:
+                self.set_enabled(mod_id, True, log=log)
+            else:
+                log(tr("lib.already", name=old.name))
+            return old
 
         entry = ModEntry(mod_id=mod_id, game_id=game_id, name=mod_name(mod) or slug,
-                         slug=slug, url=mod.get("profile_url") or "", mode=mode,
+                         slug=slug, url=mod.get("profile_url") or "",
                          approval=approval_of(mod), added_at=time.time())
         self._remember_meta(entry, mod, self.client)
         log(tr("lib.downloading"))
@@ -706,7 +626,7 @@ class Library:
         if entry is None:
             new_id = min([m.mod_id for m in self.mods.values() if m.mod_id < 0], default=0) - 1
             entry = ModEntry(mod_id=new_id, game_id=0, name=stem, slug=slug, url="",
-                             mode=MODE_LOCAL, source=SOURCE_FILE, added_at=time.time())
+                             source=SOURCE_FILE, added_at=time.time())
         self._import_file(entry, src)
         entry.enabled = True
         self._copy_to_game(entry)
@@ -1110,12 +1030,10 @@ class Library:
     def update_all(self, progress: Optional[Callable[[int, int], None]] = None,
                    log: Callable[[str], None] = lambda s: None,
                    check: bool = False, install_updates: bool = False) -> dict:
-        report: dict = {"updated": [], "installed": [], "ok": 0, "failed": [], "sub_ids": None,
-                        "changes": []}
+        report: dict = {"updated": [], "installed": [], "ok": 0, "failed": [], "changes": []}
         self._changes = []
         if any(e.enabled for e in self.mods.values()):
             self.paks_dir()
-        self.convert_to_local()
         client = self.client if self.config.token else None
 
         entries = sorted(self.mods.values(), key=lambda m: m.name.lower())
@@ -1157,23 +1075,15 @@ class Library:
                 result = "updated"
             elif not cache_ok:
                 raise ModioError(tr("err.file_missing", path=src))
-        elif e.mode == MODE_LOCAL:
+        else:
             wanted_update = install_updates and bool(e.latest_version) and not e.hold
             if check or wanted_update or not cache_ok or e.file_id is None:
                 if client is None:
                     raise ModioError(tr("err.no_token"), status=401)
                 result = self._fetch_entry(e, client, progress, cache_ok)
-        else:
-            if client is not None and e.enabled and check:
-                mod = client.get_mod_by_id(e.game_id, e.mod_id)
-                mf = mod.get("modfile") or {}
-                if mf.get("id") != e.file_id:
-                    e.file_id, e.version = mf.get("id"), mf.get("version") or ""
-                    result = "updated"
-            return result
 
         if e.enabled:
-            missing = (not e.installed_paks or self._is_legacy(e) or self.needs_reorder(e)
+            missing = (not e.installed_paks or self.needs_reorder(e)
                        or any(not self._installed_path(n).is_file() for n in e.installed_paks))
             if result == "updated" or missing:
                 self._copy_to_game(e)
@@ -1355,33 +1265,6 @@ class Library:
                       log: Callable[[str], None] = lambda s: None) -> list[str]:
         return self.update_all(progress=progress, log=log, check=True)["updated"]
 
-    def sync_subscriptions(self, subscribed: list[dict]) -> bool:
-        changed = False
-        sub_ids = set()
-        for mod in subscribed:
-            mid = int(mod["id"])
-            sub_ids.add(mid)
-            e = self.mods.get(mid)
-            mf = mod.get("modfile") or {}
-            if e is None:
-                self.mods[mid] = ModEntry(
-                    mod_id=mid, game_id=int(mod["game_id"]), name=mod_name(mod) or str(mid),
-                    slug=mod.get("name_id") or str(mid), url=mod.get("profile_url") or "",
-                    mode=self.config.default_mode,
-                    file_id=mf.get("id") if self.config.default_mode == MODE_SUBSCRIBE else None,
-                    version=mf.get("version") or "")
-                changed = True
-            elif e.mode == MODE_SUBSCRIBE and not e.enabled:
-                e.enabled = True
-                changed = True
-        for e in self.mods.values():
-            if e.mode == MODE_SUBSCRIBE and e.enabled and e.mod_id not in sub_ids:
-                e.enabled = False
-                changed = True
-        if changed:
-            self.save()
-        return changed
-
     def account_subscriptions(self) -> list[dict]:
         client = self.client
         return client.subscribed_mods(client.game_id("drg"))
@@ -1396,7 +1279,7 @@ class Library:
                 self.mods[mid] = ModEntry(
                     mod_id=mid, game_id=gid, name=mod_name(mod) or str(mid),
                     slug=mod.get("name_id") or str(mid), url=mod.get("profile_url") or "",
-                    mode=MODE_LOCAL, approval=approval_of(mod))
+                    approval=approval_of(mod))
         self.save()
         return n
 
@@ -1504,25 +1387,4 @@ class Library:
 
     def needs_install(self) -> list[int]:
         return [e.mod_id for e in self.mods.values()
-                if e.mode == MODE_LOCAL and e.enabled and not e.installed_paks]
-
-    def convert_to_local(self, ids: Optional[list[int]] = None) -> list[int]:
-        converted = []
-        for e in self.mods.values():
-            if (ids is None or e.mod_id in ids) and e.mode == MODE_SUBSCRIBE:
-                e.mode = MODE_LOCAL
-                e.enabled = True
-                e.file_id = None
-                e.cached_paks = []
-                converted.append(e.mod_id)
-        if converted:
-            self.save()
-        return converted
-
-    def orphan_paks(self) -> list[str]:
-        known = {n for m in self.mods.values() for n in m.installed_paks}
-        legacy = [p.name for p in self.paks_dir().glob("*.pak")]
-        mods = self.mods_dir()
-        current = [f"{p.parent.name}/{p.name}" for p in mods.glob("*/*.pak")] if mods.is_dir() else []
-        return sorted(n for n in legacy + current
-                      if n.split("/")[0].startswith(OWNED_PREFIXES) and n not in known)
+                if e.enabled and not e.installed_paks]

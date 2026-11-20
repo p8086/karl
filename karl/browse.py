@@ -4,7 +4,6 @@ import hashlib
 import io
 import time
 import tkinter as tk
-import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from tkinter import ttk
@@ -12,7 +11,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from . import i18n
 from .i18n import months, tr
-from .library import CACHE_DIR, MODE_LOCAL, MODE_SUBSCRIBE
+from .library import CACHE_DIR
 from .modio import fetch_bytes, mod_name
 from .ui import px
 from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CARD, CHIP, FG,
@@ -68,7 +67,7 @@ LIBRARY = [LIB_ALL, LIB_SUB, LIB_NOT_SUB]
 
 
 def build_query(search: str, selected: dict[str, set[str]], group_types: dict[str, str],
-                sort: str, date: str, library: str, sub_ids: set[int],
+                sort: str, date: str, library: str, lib_ids: set[int],
                 now: Optional[float] = None) -> tuple[Optional[dict], Callable[[dict], bool]]:
     params: dict = {"_sort": SORTS.get(sort, SORTS["trending"])}
     if search.strip():
@@ -79,11 +78,11 @@ def build_query(search: str, selected: dict[str, set[str]], group_types: dict[st
         params["date_live-min"] = int((now or time.time()) - seconds)
 
     if library == LIB_SUB:
-        if not sub_ids:
+        if not lib_ids:
             return None, lambda m: True
-        params["id-in"] = ",".join(str(i) for i in sorted(sub_ids))
-    elif library == LIB_NOT_SUB and sub_ids:
-        params["id-not-in"] = ",".join(str(i) for i in sorted(sub_ids))
+        params["id-in"] = ",".join(str(i) for i in sorted(lib_ids))
+    elif library == LIB_NOT_SUB and lib_ids:
+        params["id-not-in"] = ",".join(str(i) for i in sorted(lib_ids))
 
     all_tags: list[str] = []
     multi: list[set[str]] = []
@@ -164,11 +163,11 @@ def mod_link(mod: dict) -> str:
     return mod.get("profile_url") or f"https://mod.io/g/{GAME_SLUG}/m/{mod.get('name_id', '')}"
 
 
-def mods_signature(mods: list[dict], sub_ids: set[int]) -> tuple:
+def mods_signature(mods: list[dict], lib_ids: set[int]) -> tuple:
     return tuple((m["id"], m.get("date_updated"),
                   (m.get("stats") or {}).get("downloads_total"),
                   (m.get("stats") or {}).get("subscribers_total"),
-                  int(m["id"]) in sub_ids) for m in mods)
+                  int(m["id"]) in lib_ids) for m in mods)
 
 
 class ThumbCache:
@@ -384,11 +383,6 @@ class ModCard(tk.Frame):
     def mod_id(self) -> int:
         return int(self.mod["id"])
 
-    def refresh_state(self):
-        pass
-    def toggle_subscription(self):
-        self.tab.toggle_subscription(self.mod)
-
     @property
     def link(self) -> str:
         return mod_link(self.mod)
@@ -511,8 +505,6 @@ class BrowseTab(tk.Frame):
         self.mods: list[dict] = []
         self.cards: list[ModCard] = []
         self.total = 0
-        self.sub_ids: set[int] = set()
-        self.busy_ids: set[int] = set()
         self.gen = 0
         self.loading = False
         self.local_filter: Callable[[dict], bool] = lambda m: True
@@ -524,6 +516,7 @@ class BrowseTab(tk.Frame):
         self._search_job = None
         self._refresh_job = None
         self.started = False
+        self.query_lib_ids: set[int] = set()
 
         self._build()
         self.show_login_needed()
@@ -622,7 +615,7 @@ class BrowseTab(tk.Frame):
         def init():
             client = self.app.client()
             gid = client.game_id(GAME_SLUG)
-            return gid, client.game_tags(gid), []
+            return gid, client.game_tags(gid)
 
         self.app.submit(init, self._on_init, self._on_error)
 
@@ -634,9 +627,8 @@ class BrowseTab(tk.Frame):
             self._refresh_job = None
 
     def _on_init(self, res):
-        self.game_id, groups, subs = res
+        self.game_id, groups = res
         self._apply_tags(groups)
-        self._apply_subscriptions(subs)
         self.new_query()
         self._schedule_refresh()
 
@@ -647,13 +639,6 @@ class BrowseTab(tk.Frame):
         self.type_tags = {t for g in groups if g.get("name", "").lower() == "type"
                           for t in g.get("tags", [])}
         self.sidebar.set_groups(groups)
-
-    def _apply_subscriptions(self, subs: list[dict]):
-        self.sub_ids = {int(m["id"]) for m in subs}
-        if self.app.lib.sync_subscriptions(subs):
-            self.app.refresh_mine()
-        if self.app.lib.needs_install():
-            self.app.mine.install_pending()
 
     def _on_error(self, msg: str):
         self.loading = False
@@ -683,9 +668,9 @@ class BrowseTab(tk.Frame):
         self._search_job = self.after(450, self.new_query)
 
     def _query(self):
+        self.query_lib_ids = self.library_ids()
         return build_query(self.search_var.get(), self.sidebar.selected(), self.sidebar.types,
-                           self.sort.key, self.date.key, self.library.key,
-                           self.library_ids())
+                           self.sort.key, self.date.key, self.library.key, self.query_lib_ids)
 
     def new_query(self):
         if not self.started or self.game_id is None:
@@ -761,10 +746,6 @@ class BrowseTab(tk.Frame):
         self.live_lbl.configure(text=tr("browse.live", time=f"{datetime.now():%H:%M}"),
                                 fg="#5fbf6a")
 
-    def refresh_cards_state(self):
-        for c in self.cards:
-            c.refresh_state()
-
     def copy_link(self, mod: dict):
         url = mod_link(mod)
         mine = self.app.mine
@@ -775,57 +756,8 @@ class BrowseTab(tk.Frame):
         name = mod.get("name", "")
         self.app.set_status(tr("browse.link_added" if added else "browse.link_already", name=name))
 
-    def mod_state(self, mid: int) -> Optional[str]:
-        e = self.app.lib.mods.get(mid)
-        if e is not None and e.enabled and e.mode == MODE_LOCAL:
-            return "installed"
-        if mid in self.sub_ids:
-            return "subscribed"
-        return None
-
     def library_ids(self) -> set[int]:
-        installed = {i for i, e in self.app.lib.mods.items()
-                     if i > 0 and e.enabled and e.mode == MODE_LOCAL}
-        return installed | self.sub_ids
-
-    def toggle_subscription(self, mod: dict):
-        mid = int(mod["id"])
-        if mid in self.busy_ids:
-            return
-        self.busy_ids.add(mid)
-        self.refresh_cards_state()
-        lib = self.app.lib
-        state = self.mod_state(mid)
-        mode = MODE_LOCAL
-
-        def work():
-            if state is None:
-                lib.add_mod_object(mod, mode)
-            elif mid in lib.mods:
-                lib.remove(mid)
-            else:
-                self.app.client().unsubscribe(int(mod["game_id"]), mid)
-
-        def done(_):
-            self.busy_ids.discard(mid)
-            if state is None and mode == MODE_SUBSCRIBE:
-                self.sub_ids.add(mid)
-            elif state == "subscribed":
-                self.sub_ids.discard(mid)
-            self.refresh_cards_state()
-            self.app.refresh_mine()
-            if state is None:
-                key = "browse.status_installed" if mode == MODE_LOCAL else "browse.status_subscribed"
-            else:
-                key = "browse.status_removed" if state == "installed" else "browse.status_unsubscribed"
-            self.app.set_status(tr(key, name=mod.get("name")))
-
-        def fail(msg):
-            self.busy_ids.discard(mid)
-            self.refresh_cards_state()
-            self.app.show_error(msg)
-
-        self.app.submit(work, done, fail)
+        return {i for i, e in self.app.lib.mods.items() if i > 0 and e.enabled}
 
     def _schedule_refresh(self):
         if self._refresh_job:
@@ -848,10 +780,9 @@ class BrowseTab(tk.Frame):
 
         def work():
             client = self.app.client()
-            subs: list = []
             page = client.list_mods(gid, params)
             tags = client.game_tags(gid) if with_tags else None
-            return subs, page, tags
+            return page, tags
 
         self.app.submit(work, lambda res: self._on_refresh(gen, res),
                         lambda msg: (self._on_error(msg), self._schedule_refresh()))
@@ -860,12 +791,10 @@ class BrowseTab(tk.Frame):
         self._schedule_refresh()
         if gen != self.gen:
             return
-        subs, (page, total), tags = res
+        (page, total), tags = res
         if tags is not None:
             self._apply_tags(tags)
-        old_subs = self.library_ids()
-        self._apply_subscriptions(subs)
-        if self.library.key != LIB_ALL and old_subs != self.library_ids():
+        if self.library.key != LIB_ALL and self.query_lib_ids != self.library_ids():
             self.new_query()
             return
         mods = [m for m in page if self.local_filter(m)]

@@ -29,7 +29,7 @@ from . import browse as browse_mod, crash, diagnostics, selfupdate, single, tray
 from .bisect import Bisect
 from .ui import px
 from .details import ModDetails, html_to_text
-from .library import (MODE_LOCAL, MODE_SUBSCRIBE, SOURCE_FILE, Config, Library,
+from .library import (SOURCE_FILE, Config, Library,
                       extract_local_paths, find_paks_dir, install_dirs)
 from . import i18n
 from .i18n import tr
@@ -88,10 +88,8 @@ class App(tk.Tk):
             self.browse.start()
             if not (self.config_.username and self.config_.avatar_url and self.config_.profile_url):
                 self.submit(lambda: self.client().me(), self._refresh_me, lambda err: None)
-        self.submit(self.lib.migrate_install_location,
-                    lambda moved: (self.refresh_mine(), self.mine.install_pending())
-                    if moved else None,
-                    lambda err: None)
+        if self.lib.needs_install():
+            self.after(600, self.mine.install_pending)
         self.after(800, self.check_foreign_loader)
         self.after(1500, self.check_modio_subscriptions)
         self.after(2500, self.check_integration)
@@ -658,8 +656,6 @@ class App(tk.Tk):
 
     def refresh_mine(self):
         self.mine.refresh()
-        if self.browse.started:
-            self.browse.refresh_cards_state()
 
     def auto_check_updates(self):
         if not self.config_.auto_check_updates or self.busy or not self.lib.mods:
@@ -995,14 +991,6 @@ class App(tk.Tk):
         self.tray.refresh()
         if self.config_.logged_in:
             self.browse.start()
-
-
-MODE_KEYS = {MODE_SUBSCRIBE: "mode.subscribe", MODE_LOCAL: "mode.local"}
-CHECK_ON, CHECK_OFF, CHECK_BUSY = "☑", "☐", "…"
-
-
-def mode_choice(default: str) -> Choice:
-    return Choice([MODE_SUBSCRIBE, MODE_LOCAL], "", default, label=lambda k: tr(MODE_KEYS[k]))
 
 
 class MineTab(tk.Frame):
@@ -1898,10 +1886,9 @@ class MineTab(tk.Frame):
             return
         if self.app.busy:
             return
-        mode = MODE_LOCAL
         self.clear_links()
         items = urls + paths
-        self.app.run(tr("mine.adding", n=len(items)), lambda: self._add_many(items, mode))
+        self.app.run(tr("mine.adding", n=len(items)), lambda: self._add_many(items))
 
     def add_files(self):
         if self.app.busy:
@@ -1911,9 +1898,9 @@ class MineTab(tk.Frame):
             filetypes=[(tr("mine.files_filter"), "*.pak *.zip"), (tr("mine.files_all"), "*.*")])
         files = [f for f in (files or ()) if f]
         if files:
-            self.app.run(tr("mine.adding", n=len(files)), lambda: self._add_many(files, MODE_LOCAL))
+            self.app.run(tr("mine.adding", n=len(files)), lambda: self._add_many(files))
 
-    def _add_many(self, items: list[str], mode: str):
+    def _add_many(self, items: list[str]):
         app = self.app
         added, failed = [], []
         for n, item in enumerate(items, 1):
@@ -1924,13 +1911,11 @@ class MineTab(tk.Frame):
                 if is_file:
                     e = self.lib.add_local_file(item)
                 else:
-                    e = self.lib.add(item, mode, progress=app.on_progress, log=lambda s: None)
+                    e = self.lib.add(item, progress=app.on_progress, log=lambda s: None)
             except Exception as err:
                 failed.append((item, str(err)))
                 continue
             added.append(e.name)
-            if e.mode == MODE_SUBSCRIBE:
-                app.post(app.browse.sub_ids.add, e.mod_id)
             app.post(self.refresh)
         added_ids = [self.lib.mods[i].mod_id for i in list(self.lib.mods)
                      if self.lib.mods[i].name in added]
@@ -1977,7 +1962,6 @@ class MineTab(tk.Frame):
             for i in ids:
                 self.lib.remove(i, log=self.app.log)
                 self.wanted.pop(i, None)
-                self.app.post(self.app.browse.sub_ids.discard, i)
         self.app.run(tr("mine.removing"), work)
 
     def update_mods(self):
@@ -1993,23 +1977,7 @@ class MineTab(tk.Frame):
         if self.lib.needs_install() and not self.app.busy:
             self.update_mods()
 
-    def convert_to_karl(self):
-        if self.app.busy:
-            return
-        ids = self.selected_ids() or None
-        converted = self.lib.convert_to_local(ids)
-        if not converted:
-            return
-        self.refresh()
-        self.app.set_status(tr("mine.converting", n=len(converted)))
-        self.update_mods()
-
     def _after_update(self, report: dict):
-        browse = self.app.browse
-        if report.get("sub_ids") is not None:
-            browse.sub_ids = set(report["sub_ids"])
-            if browse.started:
-                browse.refresh_cards_state()
         self.refresh()
         if report["failed"]:
             lines = "\n".join(f"• {name}: {err}" for name, err in report["failed"][:15])
@@ -2922,7 +2890,6 @@ class SettingsDialog(tk.Toplevel):
         if self.scale_var.get() in labels:
             cfg.ui_scale = ui.SCALES[labels.index(self.scale_var.get())]
         ui.set_scale(old_scale)
-        cfg.default_mode = MODE_LOCAL
         cfg.refresh_seconds = int(self.refresh.get() or 60)
         cfg.auto_check_updates = bool(self.auto_updates.get())
         karl_was = cfg.check_karl_updates

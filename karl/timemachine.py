@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import shutil
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
     from .library import Library
 
 MAX_SNAPSHOTS = 50
-ENTRY_FIELDS = ("mod_id", "game_id", "name", "slug", "url", "mode", "file_id", "version",
+ENTRY_FIELDS = ("mod_id", "game_id", "name", "slug", "url", "file_id", "version",
                 "source", "file_path", "file_mtime", "approval")
 
 
@@ -162,7 +161,7 @@ class TimeMachine:
             i = row["mod_id"]
             e = lib.mods.get(i)
             if e is None:
-                e = ModEntry(**{k: row[k] for k in ENTRY_FIELDS})
+                e = ModEntry(**{k: row[k] for k in ENTRY_FIELDS if k in row})
                 lib.mods[i] = e
             current = [_hash(Path(p)) if Path(p).is_file() else "" for p in e.cached_paks]
             wanted = [p["hash"] for p in row["paks"]]
