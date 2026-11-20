@@ -282,8 +282,14 @@ class App(tk.Tk):
 
         head = tk.Frame(root, bg=BG, padx=16, pady=10)
         head.pack(fill="x")
-        if self._icons:
+        logo = ASSETS / "logo_header.png"
+        if logo.exists():
+            self._head_icon = tk.PhotoImage(file=str(logo))
+        elif self._icons:
             self._head_icon = self._icons[-2] if len(self._icons) > 1 else self._icons[0]
+        else:
+            self._head_icon = None
+        if self._head_icon:
             tk.Label(head, image=self._head_icon, bg=BG).pack(side="left")
         tk.Label(head, text=APP_TITLE, bg=BG, fg=FG, font=(FONT, 18, "bold")).pack(side="left", padx=(8, 0))
         tk.Label(head, text="DRG mod loader · made by pe", bg=BG, fg=MUTED, font=(FONT, 10)).pack(

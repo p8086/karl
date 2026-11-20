@@ -267,6 +267,6 @@ Found a bug or have an idea? Open an issue on the **Issues** page of the reposit
 
 Karl is an unofficial fan project. It is not affiliated with, endorsed or sponsored by Ghost Ship Games, Coffee Stain or mod.io. Deep Rock Galactic and its assets are trademarks of their respective owners.
 
-## License
+## Logo
 
-Karl is released under the [MIT License](LICENSE).
+The Karl logo was manually designed by Pietro Schena.
