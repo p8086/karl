@@ -543,6 +543,7 @@ class BrowseTab(tk.Frame):
 
         self.search_var = tk.StringVar()
         search = ttk.Entry(top, textvariable=self.search_var, width=28)
+        self.search_entry = search
         search.pack(side="right", padx=(8, 0))
         tk.Label(top, text="⌕", bg=BG, fg=MUTED, font=(FONT, 13)).pack(side="right")
         self.search_var.trace_add("write", lambda *a: self._debounce_search())

@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 from . import APP_NAME
 from .i18n import tr
-from . import game, integration, proton
+from . import game, integration, pakfile, proton
 from .modio import (KNOWN_GAMES, DEFAULT_GAME, ModioClient, ModioError, dependency_info,
                     game_versions_of, modfile_info, parse_mod_url, version_key)
 from .pakfile import PakError, hide_asset_registry, init_classes
@@ -104,8 +104,9 @@ class Config:
     dev_restart: bool = False
     auto_check_updates: bool = False
     check_karl_updates: bool = True
-    skip_karl_version: str = ""
+    karl_check_startup: bool = True
     game_build: str = ""
+    compact_links: bool = False
 
     @property
     def logged_in(self) -> bool:
@@ -239,6 +240,9 @@ class Library:
                     self.folders[name] = dict(sorted(
                         f.items(), key=lambda kv: (self.mods[kv[0]].name.lower()
                                                    if kv[0] in self.mods else "")))
+        for blank in [n for n in self.folders if not n.strip()]:
+            if len(self.folders) > 1:
+                del self.folders[blank]
         if not self.folders:
             self.folders = {tr("folder.default"): {
                 i: e.enabled for i, e in sorted(self.mods.items(), key=lambda kv: kv[1].name.lower())}}
@@ -247,6 +251,8 @@ class Library:
         self._sync_folders()
 
     def _sync_folders(self) -> None:
+        if not self.active_folder:
+            return
         folder = self.folders.setdefault(self.active_folder, {})
         in_any = set().union(*self.folders.values()) if self.folders else set()
         for i, e in self.mods.items():
@@ -322,8 +328,11 @@ class Library:
             shutil.rmtree(CACHE_DIR / str(i), ignore_errors=True)
         if self.active_folder == name:
             new = next(iter(self.folders))
-            self.active_folder = ""
-            self.switch_folder(new)
+            self.active_folder = new
+            folder = self.folders[new]
+            for i, e in self.mods.items():
+                e.enabled = bool(folder.get(i, False))
+            self.save()
             return new
         self.save()
         return None
@@ -1044,6 +1053,47 @@ class Library:
             missing = [d for d in self.mods[i].deps or [] if d["id"] not in on]
             if missing:
                 out[i] = missing
+        return out
+
+    CONFLICT_IGNORE = {"fsd/assetregistry.bin", "fsd/assetregistry.krl"}
+
+    def _pak_contents(self, pak: str) -> frozenset:
+        cache = self.__dict__.setdefault("_pak_cache", {})
+        try:
+            st = Path(pak).stat()
+        except OSError:
+            return frozenset()
+        key = (pak, st.st_mtime, st.st_size)
+        if key not in cache:
+            try:
+                files = pakfile.list_files(Path(pak))
+            except (PakError, OSError, struct.error, ValueError):
+                files = []
+            cache[key] = frozenset(f.lower() for f in files) - self.CONFLICT_IGNORE
+        return cache[key]
+
+    def conflicts(self, states: Optional[dict[int, bool]] = None) -> dict[int, list[dict]]:
+        states = states or {}
+        order = [i for i in self.folders.get(self.active_folder, {})
+                 if i in self.mods and states.get(i, self.mods[i].enabled)]
+        owners: dict[str, list[int]] = {}
+        for i in order:
+            files: set = set()
+            for pak in self.mods[i].cached_paks:
+                files |= self._pak_contents(pak)
+            for f in files:
+                owners.setdefault(f, []).append(i)
+        shared: dict[tuple[int, int], int] = {}
+        for ids in owners.values():
+            if len(ids) < 2:
+                continue
+            for x in range(len(ids)):
+                for y in range(x + 1, len(ids)):
+                    shared[(ids[x], ids[y])] = shared.get((ids[x], ids[y]), 0) + 1
+        out: dict[int, list[dict]] = {}
+        for (a, b), n in shared.items():
+            out.setdefault(a, []).append({"id": b, "files": n, "winner": a})
+            out.setdefault(b, []).append({"id": a, "files": n, "winner": a})
         return out
 
     def game_build(self) -> str:

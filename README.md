@@ -109,6 +109,8 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Load order.** Drag a mod up or down the list (or select it and use Alt+Up / Alt+Down). When two mods change the same game file, the **higher one wins**. Karl writes the position into the pak name (`FSD-WindowsNoEditor_karl_<name>_<priority>_P.pak`): Unreal gives `_<N>_P.pak` paks priority 100·(N+1), so a higher number wins. Each folder has its own order; the game uses it after **Install and save** (or **Play**). New mods go to the bottom.
 
+**Conflicts.** Karl reads the file list inside each enabled mod's .pak and marks with ⇄ the mods that change the same game files as another enabled mod. Select one to see, in the status bar, which mods it clashes with, how many files they share and which one wins with the current load order (the higher one). Move a mod up or down to change the winner.
+
 **Sharing a folder.** **Export** copies a code (`KARL1:...`) to the clipboard with the folder's mods and their switches. A friend pastes it into Karl with **Import**: Karl creates a new folder, downloads the mods they are missing and makes it active. Mods added from a .pak file are not included, since they exist only on your PC.
 
 **Play.** The **▶ Play** button applies pending changes (like Install and save) and starts DRG through Steam. If the game is already running it does nothing.
@@ -121,7 +123,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Search.** The ⌕ box above the list filters the active folder as you type, by name or note (Esc clears it). While the list is filtered, the load order can't be changed.
 
-**Mod details.** Double-click a mod in My mods (or press **Details…**), or click a card in Browse: a window shows cover, author, stats, the game versions the mod is marked for, the full description, its images (click one to open it full size), the last versions with their changelog, and the mods it requires. Buttons open the mod.io page or copy the link.
+**Mod details.** Double-click a mod in My mods, or click a card in Browse: a window shows cover, author, stats, the game versions the mod is marked for, the full description, its images (click one to open it full size), the last versions with their changelog, and the mods it requires. Buttons open the mod.io page or copy the link.
 
 **Required mods.** Karl reads from mod.io which other mods each mod needs (for example Mod Hub or DRGLib). If one is missing from the active folder or turned off, the mod shows ⚠ next to its name, selecting it tells you what is missing, and after **Add** Karl lists the missing ones with their links. It never installs anything on its own: you add them like any other mod.
 
@@ -135,7 +137,25 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Disk space.** **Settings → Disk space…** shows how much space mods in use, time machine snapshots, files no longer used, downloaded covers and previous versions take, and frees what you select. Deleting previous versions means **Previous version** won't work until the mods update again.
 
-**Automatic checks.** In **Settings → Maintenance** you can have Karl check for updates of all your mods, in every folder, at every startup, and get a notice when a new version of Karl is released on GitHub (you can skip a version you don't want).
+**Automatic checks.** In **Settings → Maintenance** you can have Karl check for updates of all your mods, in every folder, at every startup, and have Karl check for new versions of itself (see below).
+
+**Updating Karl.** At the bottom right, next to the progress bar, there is a **GitHub ↗** link to this page. If **Show the Karl update icon** is ticked in **Settings → Maintenance**, the ⟳ update icon appears next to it. With **Check for new versions of Karl at every startup** also ticked, Karl checks GitHub each time it opens; untick it and Karl checks only when you click the icon. When a new version is out the icon becomes **⟳ !**. Click it and Karl updates itself: it downloads the new `Karl.exe` (or the Linux binary) from the latest release, replaces the old one and restarts. With no update pending, clicking ⟳ checks again right away. If you run Karl from the source code, the icon opens the releases page instead (update with `git pull`). Untick **Show the Karl update icon** to hide the icon and stop every check.
+
+**Compact mode.** **Hide links** (above the list, or Ctrl+L) hides the *Mod links* box to give the list more room, handy on small screens and the Steam Deck. Karl remembers the choice; the box comes back by itself when you copy a link from Browse.
+
+**Keyboard shortcuts.**
+
+| Key | Action |
+| --- | --- |
+| Ctrl+F | Search (in Browse or My mods, depending on the open tab) |
+| F5 | Check for updates in My mods, reload the list in Browse |
+| Ctrl+S | Install and save |
+| Ctrl+L | Hide or show the Mod links box |
+| Delete | Remove the selected mods |
+| Space | Turn the selected mods on or off |
+| Alt+Up / Alt+Down | Move the selected mod in the load order |
+| Ctrl+Enter | Add the links in the box |
+| Esc | Clear the search |
 
 **Developer mode** (for modders). With the box ticked, every 2 seconds Karl checks the date of the .pak files of mods you added from a file: when you rebuild one, it reimports it and puts it back in the game by itself. While DRG is running the pak is in use: Karl waits until you close the game or, if you also ticked **Restart DRG when a mod changes**, closes DRG, updates the mod and starts it again.
 

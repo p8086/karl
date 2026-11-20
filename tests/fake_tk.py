@@ -48,11 +48,11 @@ class Widget:
             self.master.children_.append(self)
 
     TK_METHODS = {
-        "pack", "grid", "place", "pack_forget", "place_forget", "grid_forget",
+        "grid", "place", "place_forget", "grid_forget",
         "pack_propagate", "lift", "focus_set", "title", "geometry", "minsize", "resizable",
         "transient", "grab_set", "iconbitmap", "iconphoto", "option_add", "mainloop",
         "tk_popup", "add_command", "add", "column", "set", "theme_use", "map",
-        "itemconfigure", "yview_moveto", "yview_scroll", "bind_all", "unbind_all",
+        "itemconfigure", "yview_moveto", "yview_scroll", "unbind_all",
         "update_idletasks", "columnconfigure", "rowconfigure", "select", "index", "tab",
         "deiconify", "focus_force", "attributes",
     }
@@ -85,6 +85,15 @@ class Widget:
             c.destroy()
 
     def bind(self, seq, fn=None, add=None):
+        self.bindings[seq] = fn
+
+    def pack(self, *a, **k):
+        self.__dict__["packed"] = True
+
+    def pack_forget(self):
+        self.__dict__["packed"] = False
+
+    def bind_all(self, seq, fn=None, add=None):
         self.bindings[seq] = fn
 
     def protocol(self, name, fn=None):

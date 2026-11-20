@@ -10,6 +10,7 @@ if __name__ == "__main__" and not __package__:
 
 import queue
 import sys
+import tempfile
 import time
 import tkinter as tk
 import webbrowser
@@ -19,7 +20,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable, Optional
 
-from . import APP_TITLE, VERSION, game
+from . import APP_TITLE, GITHUB_REPO, VERSION, game
 from .browse import BrowseTab, Choice, flat_button, human_date, human_size, set_button_style
 from . import selfupdate, single
 from .details import ModDetails
@@ -35,6 +36,7 @@ from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CHIP
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 TOKEN_PAGE = "https://mod.io/me/access"
+GITHUB_PAGE = f"https://github.com/{GITHUB_REPO}"
 
 
 class ErrorText(str):
@@ -62,12 +64,16 @@ class App(tk.Tk):
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.pool = ThreadPoolExecutor(max_workers=4)
         self.busy = False
+        self.instance = None
+        self.karl_release: Optional[dict] = None
 
         self._set_icon()
         self._style()
         self._build()
         self.after(50, self._poll)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self._bind_shortcuts()
+        self.apply_update_icon()
         self.update_account()
         if self.config_.logged_in:
             self.browse.start()
@@ -81,7 +87,7 @@ class App(tk.Tk):
         self.after(1500, self.check_modio_subscriptions)
         self.after(2500, self.check_integration)
         self.after(3000, self.auto_check_updates)
-        self.after(4000, self.check_karl_update)
+        self.after(4000, self.startup_karl_check)
         self.after(5000, self.check_game_update)
 
     def check_integration(self):
@@ -315,6 +321,17 @@ class App(tk.Tk):
         bottom.pack(fill="x")
         self.progress = ttk.Progressbar(bottom, mode="determinate", length=160)
         self.progress.pack(side="right")
+        self.update_lbl = tk.Label(bottom, text="⟳", bg=BG, fg=MUTED, font=(FONT, 11),
+                                   cursor="hand2")
+        self.update_lbl.bind("<Button-1>", lambda _e: self.karl_update_clicked())
+        self.update_lbl.bind("<Enter>", lambda _e: self._update_hover(True))
+        self.update_lbl.bind("<Leave>", lambda _e: self._update_hover(False))
+        self.github_lbl = tk.Label(bottom, text="GitHub ↗", bg=BG, fg=MUTED, font=(FONT, 9),
+                                   cursor="hand2")
+        self.github_lbl.pack(side="right", padx=(0, 14))
+        self.github_lbl.bind("<Button-1>", lambda _e: webbrowser.open(GITHUB_PAGE))
+        self.github_lbl.bind("<Enter>", lambda _e: self.github_lbl.configure(fg=FG))
+        self.github_lbl.bind("<Leave>", lambda _e: self.github_lbl.configure(fg=MUTED))
         self.status = tk.StringVar(value=tr("status.ready"))
         tk.Label(bottom, textvariable=self.status, bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
 
@@ -417,23 +434,147 @@ class App(tk.Tk):
 
         self.run(tr("mine.checking_updates"), work)
 
+    def startup_karl_check(self):
+        self.apply_update_icon()
+        if self.config_.karl_check_startup:
+            self.check_karl_update()
+
     def check_karl_update(self, fetch=None):
-        cfg = self.config_
-        if not cfg.check_karl_updates:
+        self.apply_update_icon()
+        if not self.config_.check_karl_updates:
             return
         kw = {"fetch": fetch} if fetch else {}
+        self.submit(lambda: selfupdate.latest_release(**kw), self._set_karl_release,
+                    lambda err: None)
 
-        def done(version):
-            if not version or not selfupdate.is_newer(version) or version == cfg.skip_karl_version:
-                return
-            if messagebox.askyesno(APP_TITLE, tr("karl_update.available", version=version,
-                                                 current=VERSION)):
-                webbrowser.open(selfupdate.RELEASES_PAGE)
+    def apply_update_icon(self):
+        if self.config_.check_karl_updates:
+            self.update_lbl.pack(side="right", padx=(0, 14), before=self.github_lbl)
+        else:
+            self.update_lbl.pack_forget()
+
+    def karl_update_ready(self) -> bool:
+        return bool(self.karl_release) and selfupdate.is_newer(self.karl_release["version"])
+
+    def _set_karl_release(self, release: Optional[dict]):
+        self.karl_release = release
+        ready = self.karl_update_ready()
+        self.update_lbl.configure(text="⟳ !" if ready else "⟳", fg=ACCENT if ready else MUTED,
+                                  font=(FONT, 11, "bold") if ready else (FONT, 11))
+
+    def _update_hover(self, inside: bool):
+        ready = self.karl_update_ready()
+        if not ready:
+            self.update_lbl.configure(fg=FG if inside else MUTED)
+        if inside:
+            self._status_before_hover = self.status.get()
+            self.set_status(tr("karl_update.ready_hint", version=self.karl_release["version"],
+                               current=VERSION) if ready
+                            else tr("karl_update.hint", current=VERSION))
+        elif getattr(self, "_status_before_hover", None) is not None:
+            self.set_status(self._status_before_hover)
+            self._status_before_hover = None
+
+    def karl_update_clicked(self, fetch=None):
+        if self.busy:
+            return
+        self._status_before_hover = None
+        if self.karl_update_ready():
+            self.start_karl_update(self.karl_release)
+            return
+        kw = {"fetch": fetch} if fetch else {}
+        self.set_status(tr("karl_update.checking"))
+
+        def done(rel):
+            self._set_karl_release(rel)
+            if rel is None:
+                self.set_status(tr("karl_update.check_failed"))
+            elif self.karl_update_ready():
+                self.set_status(tr("karl_update.ready_hint", version=rel["version"],
+                                   current=VERSION))
             else:
-                cfg.skip_karl_version = version
-                cfg.save()
+                self.set_status(tr("karl_update.up_to_date", version=VERSION))
 
-        self.submit(lambda: selfupdate.latest_version(**kw), done, lambda err: None)
+        self.submit(lambda: selfupdate.latest_release(**kw), done,
+                    lambda err: self.set_status(tr("karl_update.check_failed")))
+
+    def start_karl_update(self, release: dict):
+        if not selfupdate.can_self_update():
+            webbrowser.open(release.get("page") or selfupdate.RELEASES_PAGE)
+            return
+        if self.busy:
+            return
+        if self.mine.wanted and not messagebox.askyesno(APP_TITLE, tr("mine.quit_unsaved")):
+            return
+        exe = Path(sys.executable)
+        work = Path(tempfile.mkdtemp(prefix="karl-update-"))
+
+        def job():
+            plan = selfupdate.prepare(release, exe, work, progress=self.on_progress)
+            self.post(self._finish_karl_update, release, plan)
+
+        self.busy = True
+        self.set_status(tr("karl_update.downloading", version=release["version"]))
+
+        def fail(msg):
+            self.busy = False
+            self.progress.configure(value=0)
+            self.set_status(tr("status.error"))
+            if messagebox.askyesno(APP_TITLE, tr("karl_update.failed", msg=msg)):
+                webbrowser.open(release.get("page") or selfupdate.RELEASES_PAGE)
+
+        self.submit(job, None, fail)
+
+    def _finish_karl_update(self, release: dict, plan: dict):
+        messagebox.showinfo(APP_TITLE, tr("karl_update.restart", version=release["version"]))
+        if self.instance is not None:
+            self.instance.close()
+        try:
+            selfupdate.restart(plan)
+        except OSError as err:
+            self.busy = False
+            self.show_error(tr("karl_update.failed", msg=err))
+            return
+        self.destroy()
+
+    def _bind_shortcuts(self):
+        self.bind_all("<Control-f>", lambda e: self._shortcut(self.focus_search))
+        self.bind_all("<Control-F>", lambda e: self._shortcut(self.focus_search))
+        self.bind_all("<F5>", lambda e: self._shortcut(self.refresh_shortcut))
+        self.bind_all("<Control-s>", lambda e: self._shortcut(self.mine.apply_changes))
+        self.bind_all("<Control-S>", lambda e: self._shortcut(self.mine.apply_changes))
+        self.bind_all("<Control-l>", lambda e: self._shortcut(self.mine.toggle_compact))
+        self.bind_all("<Control-L>", lambda e: self._shortcut(self.mine.toggle_compact))
+
+    def _shortcut(self, fn: Callable[[], object]):
+        fn()
+        return "break"
+
+    def browse_active(self) -> bool:
+        try:
+            return self.notebook.select() == str(self.browse)
+        except tk.TclError:
+            return False
+
+    def focus_search(self):
+        if self.browse_active():
+            entry = getattr(self.browse, "search_entry", None)
+        else:
+            self.notebook.select(self.mine)
+            entry = self.mine.search_entry
+        if entry is not None:
+            entry.focus_set()
+            try:
+                entry.select_range(0, "end")
+            except (tk.TclError, AttributeError):
+                pass
+
+    def refresh_shortcut(self):
+        if self.browse_active():
+            if self.browse.started:
+                self.browse.new_query()
+        else:
+            self.mine.check_updates()
 
     def bring_to_front(self):
         try:
@@ -555,6 +696,8 @@ class App(tk.Tk):
             self.mine._on_links_changed()
         self.update_account()
         self.notebook.select(tab)
+        self.apply_update_icon()
+        self._set_karl_release(self.karl_release)
         if self.config_.logged_in:
             self.browse.start()
 
@@ -575,6 +718,7 @@ class MineTab(tk.Frame):
 
         top = tk.Frame(self, bg=BG, padx=16, pady=12)
         top.pack(fill="x")
+        self.links_frame = top
         tk.Label(top, text=tr("mine.links_label"), bg=BG, fg=FG,
                  font=(FONT, 10, "bold")).pack(anchor="w")
         row = tk.Frame(top, bg=BG)
@@ -604,6 +748,7 @@ class MineTab(tk.Frame):
 
         bar = tk.Frame(self, bg=BG, padx=16)
         bar.pack(fill="x", pady=(8, 0))
+        self.folder_bar = bar
         folder_box = tk.Frame(bar, bg=BG)
         folder_box.pack(side="left", padx=(0, 14))
         tk.Label(folder_box, text=tr("folder.label"), bg=BG, fg=MUTED,
@@ -644,6 +789,8 @@ class MineTab(tk.Frame):
         show_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
         tk.Label(filt, text=tr("mine.show_label"), bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(side="right", padx=(12, 6))
+        self.compact_btn = ttk.Button(filt, command=self.toggle_compact)
+        self.compact_btn.pack(side="right")
         footer = tk.Frame(self, bg=BG, padx=16)
         footer.pack(side="bottom", fill="x", pady=(0, 6))
         counts = tk.Frame(footer, bg=BG)
@@ -683,6 +830,7 @@ class MineTab(tk.Frame):
         self.tree.bind("<Double-1>", self._on_double)
         self.tree.bind("<<TreeviewSelect>>", self.show_note, add="+")
         self.tree.bind("<space>", lambda e: (self.toggle(), "break")[1])
+        self.tree.bind("<Delete>", lambda e: (self.remove(), "break")[1])
         self.tree.bind("<Alt-Up>", lambda e: (self._move_selected(-1), "break")[1])
         self.tree.bind("<Alt-Down>", lambda e: (self._move_selected(1), "break")[1])
         sb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
@@ -692,7 +840,6 @@ class MineTab(tk.Frame):
         side = tk.Frame(mid, bg=BG, padx=10)
         side.pack(side="left", fill="y")
         for key, cmd in (("mine.remove", self.remove),
-                         ("details.button", self.open_details),
                          ("mine.open", self.open_page),
                          ("rollback.button", self.rollback),
                          ("mine.note", self.edit_note)):
@@ -710,7 +857,23 @@ class MineTab(tk.Frame):
         self._dev_job = None
         self._dev_waiting = False
         self._schedule_dev()
+        self.compact = False
+        self.set_compact(bool(cfg.compact_links), save=False)
         self.refresh()
+
+    def set_compact(self, on: bool, save: bool = True):
+        if on and not self.compact:
+            self.links_frame.pack_forget()
+        elif not on and self.compact:
+            self.links_frame.pack(fill="x", before=self.folder_bar)
+        self.compact = on
+        self.compact_btn.configure(text=tr("mine.show_links") if on else tr("mine.hide_links"))
+        if save and self.app.config_.compact_links != on:
+            self.app.config_.compact_links = on
+            self.app.config_.save()
+
+    def toggle_compact(self):
+        self.set_compact(not self.compact)
 
     @staticmethod
     def _hint() -> str:
@@ -750,6 +913,8 @@ class MineTab(tk.Frame):
         new = extract_mod_urls(url)[0]
         if not new or new[0] in urls:
             return False
+        if self.compact:
+            self.set_compact(False)
         text = self.links_text().rstrip("\n")
         if text.strip():
             self.links.insert("end", "\n" + url)
@@ -783,6 +948,7 @@ class MineTab(tk.Frame):
         self.tree.delete(*self.tree.get_children())
         mods = self.visible_mods()
         missing = self.lib.missing_dependencies(self.wanted)
+        clashes = self.lib.conflicts(self.wanted)
         for m in mods:
             on = self.is_on(m)
             ver = m.version or "-"
@@ -790,7 +956,8 @@ class MineTab(tk.Frame):
                 ver = f"{ver} 🔒"
             if m.has_update:
                 ver = f"{ver} → {m.latest_version}"
-            label = m.name + (" ✎" if m.note else "") + (" ⚠" if m.mod_id in missing else "")
+            label = (m.name + (" ✎" if m.note else "") + (" ⚠" if m.mod_id in missing else "")
+                     + (" ⇄" if m.mod_id in clashes else ""))
             self.tree.insert("", "end", iid=str(m.mod_id), text="",
                              image=self.sw_on if on else self.sw_off,
                              tags=() if on else ("off",),
@@ -995,6 +1162,15 @@ class MineTab(tk.Frame):
         if missing:
             self.app.set_status(tr("deps.status", name=self.lib.mods[ids[0]].name,
                                    deps=", ".join(d["name"] for d in missing)))
+            return
+        clashes = self.lib.conflicts(self.wanted).get(ids[0])
+        if clashes:
+            mods = self.lib.mods
+            items = ", ".join(tr("conflict.item", name=mods[c["id"]].name, n=c["files"],
+                                 winner=mods[c["winner"]].name) for c in clashes[:4])
+            if len(clashes) > 4:
+                items += " …"
+            self.app.set_status(tr("conflict.status", name=mods[ids[0]].name, mods=items))
         elif self.lib.mods[ids[0]].note:
             self.app.set_status(tr("mine.note_status", note=self.lib.mods[ids[0]].note))
 
@@ -1579,13 +1755,22 @@ class SettingsDialog(tk.Toplevel):
                  font=(FONT, 11, "bold")).grid(row=9, column=0, sticky="w", pady=(16, 2))
         self.auto_updates = tk.BooleanVar(value=cfg.auto_check_updates)
         self.karl_updates = tk.BooleanVar(value=cfg.check_karl_updates)
-        for row, (var, key) in enumerate(((self.auto_updates, "settings.auto_updates"),
-                                          (self.karl_updates, "settings.karl_updates")), 10):
-            tk.Checkbutton(f, text=tr(key), variable=var, bg=BG, fg=FG, selectcolor=PANEL,
-                           activebackground=BG, activeforeground=FG, anchor="w").grid(
-                row=row, column=0, columnspan=2, sticky="w")
+        self.karl_startup = tk.BooleanVar(value=cfg.karl_check_startup)
+        checks = {}
+        for row, (var, key, pad) in enumerate(
+                ((self.auto_updates, "settings.auto_updates", 0),
+                 (self.karl_updates, "settings.karl_updates", 0),
+                 (self.karl_startup, "settings.karl_startup", 24)), 10):
+            checks[key] = tk.Checkbutton(f, text=tr(key), variable=var, bg=BG, fg=FG,
+                                         selectcolor=PANEL, activebackground=BG,
+                                         activeforeground=FG, disabledforeground=MUTED,
+                                         anchor="w")
+            checks[key].grid(row=row, column=0, columnspan=2, sticky="w", padx=(pad, 0))
+        self.karl_startup_check = checks["settings.karl_startup"]
+        checks["settings.karl_updates"].configure(command=self._sync_karl_startup)
+        self._sync_karl_startup()
         tools = ttk.Frame(f)
-        tools.grid(row=12, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        tools.grid(row=13, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Button(tools, text=tr("profile.export"),
                    command=lambda: app.export_profile(self)).pack(side="left")
         ttk.Button(tools, text=tr("profile.import"),
@@ -1594,7 +1779,11 @@ class SettingsDialog(tk.Toplevel):
                    command=lambda: CacheDialog(app)).pack(side="left", padx=(6, 0))
 
         ttk.Button(f, text=tr("settings.save"), style="Accent.TButton", command=self.save).grid(
-            row=13, column=1, sticky="e", pady=(16, 0))
+            row=14, column=1, sticky="e", pady=(16, 0))
+
+    def _sync_karl_startup(self):
+        self.karl_startup_check.configure(
+            state="normal" if self.karl_updates.get() else "disabled")
 
     def _build_token_section(self):
         box = self.token_box
@@ -1716,13 +1905,18 @@ class SettingsDialog(tk.Toplevel):
         cfg.default_mode = MODE_LOCAL
         cfg.refresh_seconds = int(self.refresh.get() or 60)
         cfg.auto_check_updates = bool(self.auto_updates.get())
+        karl_was = cfg.check_karl_updates
         cfg.check_karl_updates = bool(self.karl_updates.get())
+        cfg.karl_check_startup = bool(self.karl_startup.get())
         new_lang = self.language.key
         lang_changed = new_lang != (cfg.language or i18n.AUTO)
         cfg.save()
         self.destroy()
         if lang_changed:
             app.change_language(new_lang)
+        app.apply_update_icon()
+        if cfg.check_karl_updates and not karl_was and cfg.karl_check_startup:
+            app.check_karl_update()
         app.set_status(tr("status.settings_saved"))
 
 
@@ -1790,6 +1984,7 @@ def main():
     if not instance.acquire() and instance.notify_existing():
         return
     app = App()
+    app.instance = instance
     instance.serve(lambda: app.post(app.bring_to_front))
     try:
         app.mainloop()

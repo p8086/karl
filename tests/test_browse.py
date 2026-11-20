@@ -1169,19 +1169,15 @@ class QualityTests(GuiBase):
         gui.webbrowser.open = opened.append
         self.addCleanup(setattr, gui.webbrowser, "open", saved_open)
         app.config_.check_karl_updates = True
-        app.check_karl_update(fetch=lambda u: b'{"tag_name": "v9.0.0"}')
-        pump(app)
-        self.assertEqual(opened, [gui.selfupdate.RELEASES_PAGE])
         mb = fake_tk.sys.modules["tkinter.messagebox"]
-        saved_ask = mb.askyesno
-        mb.askyesno = lambda *a, **k: False
-        self.addCleanup(setattr, mb, "askyesno", saved_ask)
+        mb.messages.clear()
         app.check_karl_update(fetch=lambda u: b'{"tag_name": "v9.0.0"}')
         pump(app)
-        self.assertEqual(app.config_.skip_karl_version, "9.0.0")
-        app.check_karl_update(fetch=lambda u: b'{"tag_name": "v9.0.0"}')
-        pump(app)
-        self.assertEqual(len(opened), 1)
+        self.assertEqual(app.update_lbl.kw["text"], "⟳ !")
+        self.assertEqual(opened, [])
+        self.assertEqual(mb.messages, [])
+        app.update_lbl.bindings["<Button-1>"](None)
+        self.assertEqual(opened, [gui.selfupdate.RELEASES_PAGE])
 
 
 class FeatureTests(GuiBase):
@@ -1296,6 +1292,128 @@ class FeatureTests(GuiBase):
     def test_bring_to_front(self):
         app = self.make_app()
         app.bring_to_front()
+
+class ShortcutCompactUpdateTests(GuiBase):
+    def make_app(self):
+        FakeModio.subs = set()
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True).save()
+        app = gui.App()
+        self.addCleanup(app.pool.shutdown, wait=True)
+        pump(app, 80)
+        return app
+
+    def test_compact_mode(self):
+        app = self.make_app()
+        mine = app.mine
+        self.assertFalse(mine.compact)
+        self.assertEqual(mine.compact_btn.kw["text"], "Nascondi link")
+        mine.toggle_compact()
+        self.assertTrue(mine.compact)
+        self.assertEqual(mine.compact_btn.kw["text"], "Mostra link")
+        self.assertTrue(Config.load().compact_links)
+        app2 = gui.App()
+        self.addCleanup(app2.pool.shutdown, wait=True)
+        self.assertTrue(app2.mine.compact)
+        self.assertTrue(app2.mine.append_link("https://mod.io/g/drg/m/mod-7"))
+        self.assertFalse(app2.mine.compact)
+        self.assertFalse(Config.load().compact_links)
+
+    def test_shortcuts(self):
+        app = self.make_app()
+        mine = app.mine
+        for key in ("<Control-f>", "<F5>", "<Control-s>", "<Control-l>"):
+            self.assertIn(key, app.bindings)
+        self.assertIn("<Delete>", mine.tree.bindings)
+        calls = []
+        mine.check_updates = lambda: calls.append("check")
+        mine.apply_changes = lambda: calls.append("save")
+        mine.remove = lambda: calls.append("remove")
+        self.assertEqual(app.bindings["<F5>"](None), "break")
+        self.assertEqual(app.bindings["<Control-s>"](None), "break")
+        mine.tree.bindings["<Delete>"](None)
+        app.bindings["<Control-f>"](None)
+        app.bindings["<Control-l>"](None)
+        self.assertEqual(calls, ["check", "save", "remove"])
+        self.assertTrue(mine.compact)
+
+    def test_github_link_and_update_icon(self):
+        app = self.make_app()
+        opened = []
+        saved_open = gui.webbrowser.open
+        gui.webbrowser.open = opened.append
+        self.addCleanup(setattr, gui.webbrowser, "open", saved_open)
+        app.github_lbl.bindings["<Button-1>"](None)
+        self.assertEqual(opened, ["https://github.com/p8086/karl"])
+        self.assertTrue(app.update_lbl.packed)
+        self.assertEqual(app.update_lbl.kw["text"], "⟳")
+
+        dlg = gui.SettingsDialog(app)
+        dlg.karl_updates.set(False)
+        dlg.save()
+        self.assertFalse(app.config_.check_karl_updates)
+        self.assertFalse(app.update_lbl.packed)
+        app.check_karl_update(fetch=lambda url: b'{"tag_name": "v99.0.0"}')
+        pump(app)
+        self.assertEqual(app.update_lbl.kw["text"], "⟳")
+        self.assertFalse(app.update_lbl.packed)
+        dlg = gui.SettingsDialog(app)
+        dlg.karl_updates.set(True)
+        dlg.save()
+        self.assertTrue(app.update_lbl.packed)
+
+        app.karl_update_clicked(fetch=lambda url: b"{}")
+        pump(app)
+        self.assertIn("Impossibile controllare", app.status.get())
+        app.karl_update_clicked(fetch=lambda url: b'{"tag_name": "v0.0.1"}')
+        pump(app)
+        self.assertIn("aggiornato", app.status.get())
+        self.assertEqual(app.update_lbl.kw["text"], "⟳")
+        app.karl_update_clicked(fetch=lambda url: b'{"tag_name": "v99.0.0", "html_url": "https://p/new"}')
+        pump(app)
+        self.assertEqual(app.update_lbl.kw["text"], "⟳ !")
+        self.assertIn("99.0.0", app.status.get())
+        self.assertEqual(len(opened), 1)
+        app.update_lbl.bindings["<Enter>"](None)
+        self.assertIn("clicca l'icona", app.status.get())
+        app.update_lbl.bindings["<Leave>"](None)
+        app.update_lbl.bindings["<Button-1>"](None)
+        self.assertEqual(opened[-1], "https://p/new")
+
+        prepared = []
+        saved = (gui.selfupdate.can_self_update, gui.selfupdate.prepare, gui.selfupdate.restart)
+        self.addCleanup(lambda: setattr(gui.selfupdate, "can_self_update", saved[0]) or
+                        setattr(gui.selfupdate, "prepare", saved[1]) or
+                        setattr(gui.selfupdate, "restart", saved[2]))
+        gui.selfupdate.can_self_update = lambda: True
+        gui.selfupdate.prepare = lambda rel, exe, work, progress=None: (
+            prepared.append(rel["version"]) or {"kind": "linux", "exe": str(exe)})
+        gui.selfupdate.restart = lambda plan: prepared.append(plan["kind"])
+        app.update_lbl.bindings["<Button-1>"](None)
+        pump(app)
+        self.assertEqual(prepared, ["99.0.0", "linux"])
+        self.assertTrue(app.destroyed)
+
+
+    def test_karl_check_at_startup_option(self):
+        app = self.make_app()
+        calls = []
+        app.check_karl_update = lambda fetch=None: calls.append("check")
+        self.assertTrue(app.config_.karl_check_startup)
+        app.startup_karl_check()
+        self.assertEqual(calls, ["check"])
+        dlg = gui.SettingsDialog(app)
+        self.assertEqual(dlg.karl_startup_check.kw.get("state"), "normal")
+        dlg.karl_startup.set(False)
+        dlg.save()
+        self.assertFalse(Config.load().karl_check_startup)
+        app.startup_karl_check()
+        self.assertEqual(calls, ["check"])
+        self.assertTrue(app.update_lbl.packed)
+        dlg = gui.SettingsDialog(app)
+        dlg.karl_updates.set(False)
+        dlg._sync_karl_startup()
+        self.assertEqual(dlg.karl_startup_check.kw.get("state"), "disabled")
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sys
 import tempfile
@@ -771,6 +772,131 @@ class NewFeatureTests(unittest.TestCase):
         third = single.SingleInstance(port)
         self.assertTrue(third.acquire())
         third.close()
+
+class FolderBugTests(unittest.TestCase):
+    def setUp(self):
+        self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
+        self.paks.mkdir(parents=True)
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        FakeClient.version = {"file_id": 1, "v": "1.0"}
+        self.cfg = Config(token="t", paks_dir=str(self.paks))
+        self.lib = Library(self.cfg, client_factory=FakeClient)
+
+    def test_delete_active_folder_leaves_no_blank_folder(self):
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        first = self.lib.active_folder
+        code, _ = self.lib.export_folder()
+        imported, _ = self.lib.import_folder(code)
+        self.assertEqual(imported, f"{first} (2)")
+        self.assertEqual(self.lib.active_folder, imported)
+        self.assertEqual(self.lib.delete_folder(imported), first)
+        self.assertEqual(list(self.lib.folders), [first])
+        self.lib.create_folder("prove")
+        self.lib.switch_folder("prove")
+        self.assertEqual(self.lib.delete_folder("prove"), first)
+        self.assertEqual(list(self.lib.folders), [first])
+        self.assertTrue(self.lib.mods[42].enabled)
+        self.assertIn(42, self.lib.mods)
+
+    def test_blank_folder_removed_on_load(self):
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        first = self.lib.active_folder
+        library.FOLDERS_FILE.write_text(json.dumps({
+            "versione": 2, "attiva": "",
+            "cartelle": {first: {"42": True}, "": {"42": True}}}), encoding="utf-8")
+        lib = Library(self.cfg, client_factory=FakeClient)
+        self.assertEqual(list(lib.folders), [first])
+        self.assertEqual(lib.active_folder, first)
+
+class ConflictAndUpdateTests(unittest.TestCase):
+    def setUp(self):
+        self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
+        self.paks.mkdir(parents=True)
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        self.cfg = Config(token="t", paks_dir=str(self.paks))
+        self.lib = Library(self.cfg, client_factory=FakeClient)
+
+    def test_conflicts(self):
+        from karl import pakfile
+        contents = {"alfa.pak": ["FSD/Content/X.uasset", "FSD/Content/Y.uasset", "FSD/AssetRegistry.bin"],
+                    "beta.pak": ["FSD/Content/x.uasset", "FSD/AssetRegistry.bin"],
+                    "gamma.pak": ["FSD/Content/Z.uasset", "FSD/AssetRegistry.bin"]}
+        saved = pakfile.list_files
+        pakfile.list_files = lambda p: contents.get(Path(p).name, [])
+        self.addCleanup(setattr, pakfile, "list_files", saved)
+        src = Path(tempfile.mkdtemp())
+        ids = {}
+        for name in contents:
+            (src / name).write_bytes(b"PAK" + name.encode())
+            ids[name] = self.lib.add_local_file(str(src / name)).mod_id
+        a, b, c = ids["alfa.pak"], ids["beta.pak"], ids["gamma.pak"]
+        found = self.lib.conflicts()
+        self.assertEqual(found[a], [{"id": b, "files": 1, "winner": a}])
+        self.assertEqual(found[b], [{"id": a, "files": 1, "winner": a}])
+        self.assertNotIn(c, found)
+        self.lib.set_order([b, a, c])
+        self.assertEqual(self.lib.conflicts()[a][0]["winner"], b)
+        self.assertEqual(self.lib.conflicts({b: False}), {})
+
+    def test_latest_release_and_prepare(self):
+        import json as _json
+        import tarfile
+        from karl import selfupdate
+        payload = {"tag_name": "v9.1.0", "html_url": "https://github.com/p8086/karl/releases/tag/v9.1.0",
+                   "assets": [{"name": "Karl.exe", "browser_download_url": "https://d/Karl.exe"},
+                              {"name": "karl-linux-x86_64.tar.gz",
+                               "browser_download_url": "https://d/karl.tar.gz"}]}
+        rel = selfupdate.latest_release(fetch=lambda url: _json.dumps(payload).encode())
+        self.assertEqual(rel["version"], "9.1.0")
+        self.assertEqual(rel["assets"]["Karl.exe"], "https://d/Karl.exe")
+        self.assertIsNone(selfupdate.latest_release(fetch=lambda url: b"{}"))
+        self.assertIsNone(selfupdate.latest_release(
+            fetch=lambda url: _json.dumps(dict(payload, prerelease=True)).encode()))
+        self.assertFalse(selfupdate.can_self_update())
+
+        work = Path(tempfile.mkdtemp())
+        pkg = work / "pkg" / "karl"
+        pkg.mkdir(parents=True)
+        (pkg / "karl").write_bytes(b"NUOVO")
+        (pkg / "install.sh").write_bytes(b"#!/bin/sh")
+        tgz = work / "src.tar.gz"
+        with tarfile.open(tgz, "w:gz") as tar:
+            tar.add(pkg, arcname="karl")
+        saved = selfupdate.download
+        self.addCleanup(setattr, selfupdate, "download", saved)
+
+        def fake_download(url, dest, progress=None, timeout=60):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(tgz.read_bytes() if url.endswith("tar.gz") else b"EXE")
+            return dest
+
+        selfupdate.download = fake_download
+        exe = work / "bin" / "karl"
+        exe.parent.mkdir()
+        exe.write_bytes(b"VECCHIO")
+        plan = selfupdate.prepare(rel, exe, work, platform="linux")
+        self.assertEqual(plan, {"kind": "linux", "exe": str(exe)})
+        self.assertEqual(exe.read_bytes(), b"NUOVO")
+        self.assertTrue(os.access(exe, os.X_OK))
+        self.assertFalse((work / "karl-linux-x86_64.tar.gz").exists())
+
+        wexe = work / "win" / "Karl.exe"
+        wexe.parent.mkdir()
+        wexe.write_bytes(b"OLD")
+        plan = selfupdate.prepare(rel, wexe, work, platform="win32")
+        self.assertEqual(plan["kind"], "windows")
+        self.assertEqual((work / "win" / "Karl.new.exe").read_bytes(), b"EXE")
+        script = Path(plan["script"]).read_text(encoding="utf-8")
+        self.assertIn(f'move /y "{work / "win" / "Karl.new.exe"}" "{wexe}"', script)
+        self.assertIn(f'start "" "{wexe}"', script)
+        with self.assertRaises(OSError):
+            selfupdate.prepare(dict(rel, assets={}), exe, work, platform="linux")
 
 if __name__ == "__main__":
     unittest.main()
