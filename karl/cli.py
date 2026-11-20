@@ -4,7 +4,8 @@ import argparse
 import sys
 
 from . import i18n
-from .library import Config, Library
+from .config import Config
+from .library import Library
 
 
 def _progress(done: int, total: int) -> None:

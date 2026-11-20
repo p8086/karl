@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING
 
 from .. import APP_TITLE, i18n, tray as karl_tray, ui
 from ..browse import Choice, flat_button, human_date, set_button_style
+from ..config import find_paks_dir
 from ..i18n import tr
-from ..library import find_paks_dir, install_dirs
 from ..modio import mask_token, token_expiry
+from ..paths import install_dirs
 from ..theme import ACCENT, BG, BORDER, FG, FONT, MUTED, PANEL
 from .common import TOKEN_PAGE, remember_me
 from .dialogs import CacheDialog, LoginDialog

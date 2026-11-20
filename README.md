@@ -267,7 +267,13 @@ mod.io filter names (groups and tags) are translated too, when the website provi
 ```
 main.py                  entry point (GUI or CLI)
 karl/modio.py            mod.io API client (account, tags, search, ratings, downloads)
-karl/library.py          config, Steam lookup, installing into Content/Paks
+karl/paths.py            config and cache folders, per installation
+karl/config.py           settings and Steam lookup
+karl/entry.py            a mod in the library
+karl/library.py          the library: adding, removing, installing into Content/Paks
+karl/folders.py          folders, share codes and profiles
+karl/updates.py          updates, previous versions, dependencies
+karl/gamefiles.py        game folder: other loaders, UE4SS, Proton, conflicts, cache
 karl/pakfile.py          .pak index reader (finds InitSpacerig/InitCave)
 karl/timemachine.py      snapshots and restore (time machine)
 karl/history.py          change history

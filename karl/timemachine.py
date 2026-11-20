@@ -8,6 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from . import paths
+from .entry import ModEntry
+
 if TYPE_CHECKING:
     from .library import Library
 
@@ -144,8 +147,6 @@ class TimeMachine:
         return list(reversed(out))
 
     def restore(self, snap_id: str) -> list[str]:
-        from . import library
-        from .library import ModEntry
         lib = self.lib
         snap = self.get(snap_id)
         missing: list[str] = []
@@ -167,7 +168,7 @@ class TimeMachine:
             wanted = [p["hash"] for p in row["paks"]]
             if current != wanted:
                 lib._keep_previous(e)
-                cache = library.MODS_CACHE / str(i) / "paks"
+                cache = paths.MODS_CACHE / str(i) / "paks"
                 if cache.exists():
                     shutil.rmtree(cache)
                 cache.mkdir(parents=True)

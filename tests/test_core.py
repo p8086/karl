@@ -12,8 +12,9 @@ os.environ["XDG_CONFIG_HOME"] = str(TMP / "config")
 os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from karl import library
-from karl.library import Config, Library
+from karl import config, entry, modio, paths
+from karl.config import Config
+from karl.library import Library
 from karl.modio import parse_mod_url
 
 
@@ -88,7 +89,7 @@ class Tests(unittest.TestCase):
         self.mods = self.paks.parent.parent / "Mods"
         (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
         self.cfg = Config(token="t", paks_dir=str(self.paks))
-        for f in (library.LIBRARY_FILE, library.FOLDERS_FILE, library.SNAPSHOTS_FILE):
+        for f in (paths.LIBRARY_FILE, paths.FOLDERS_FILE, paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
@@ -144,7 +145,7 @@ class Tests(unittest.TestCase):
         e = self.lib.add_local_file(str(pak))
         self.assertLess(e.mod_id, 0)
         self.assertEqual(e.name, "peHUD")
-        self.assertEqual(e.source, library.SOURCE_FILE)
+        self.assertEqual(e.source, entry.SOURCE_FILE)
         installed = self.inst("file-pehud")
         self.assertEqual(installed.read_bytes(), b"PAK-v1")
         pak.write_bytes(b"PAK-v2")
@@ -165,11 +166,11 @@ class Tests(unittest.TestCase):
         self.assertIn(e.mod_id, Library(self.cfg, client_factory=FakeClient).mods)
         self.lib.remove(e.mod_id)
         self.assertFalse(installed.exists())
-        with self.assertRaises(library.ModioError):
+        with self.assertRaises(modio.ModioError):
             self.lib.add_local_file(str(src / "non-esiste.pak"))
-        paths, rest = library.extract_local_paths(
+        found, rest = entry.extract_local_paths(
             f'"{pak}"\nhttps://mod.io/g/drg/m/x\n{pak}\n{src / "no.pak"}')
-        self.assertEqual(paths, [str(pak.resolve())])
+        self.assertEqual(found, [str(pak.resolve())])
         self.assertEqual(rest, ["https://mod.io/g/drg/m/x", str(src / "no.pak")])
 
     def test_update_all(self):
@@ -192,7 +193,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(sorted(r["installed"]), ["MiaMod", "Test Mod"])
         self.assertTrue(pak.exists() and fpak.exists())
 
-        shutil.rmtree(library.CACHE_DIR / str(e.mod_id))
+        shutil.rmtree(paths.CACHE_DIR / str(e.mod_id))
         pak.unlink()
         r = lib.update_all()
         self.assertIn("Test Mod", r["installed"])
@@ -218,7 +219,7 @@ class Tests(unittest.TestCase):
         lib.set_enabled(e.mod_id, True)
 
         mine.unlink()
-        shutil.rmtree(library.CACHE_DIR / str(f.mod_id))
+        shutil.rmtree(paths.CACHE_DIR / str(f.mod_id))
         FakeClient.version = {"file_id": 3, "v": "3.0"}
         r = lib.update_all(check=True)
         self.assertEqual([n for n, _ in r["failed"]], ["MiaMod"])
@@ -312,7 +313,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.inst("test-mod").read_bytes(), b"PAK1.0")
         self.assertTrue(lib.mods[f.mod_id].enabled)
         self.assertTrue(self.inst("file-hud").exists())
-        blobs = list(library.SNAPSHOT_BLOBS.glob("*.pak"))
+        blobs = list(paths.SNAPSHOT_BLOBS.glob("*.pak"))
         self.assertEqual(len(blobs), 3)
         again = Library(Config(paks_dir=str(self.paks)), client_factory=FakeClient)
         self.assertEqual(len(again.time_machine.snapshots), len(tm.snapshots))
@@ -369,10 +370,10 @@ class Tests(unittest.TestCase):
         out = self.paks.parent / "conf.karl"
         self.assertEqual(lib.export_profile(out), 1)
 
-        for f in (library.LIBRARY_FILE, library.FOLDERS_FILE, library.SNAPSHOTS_FILE):
+        for f in (paths.LIBRARY_FILE, paths.FOLDERS_FILE, paths.SNAPSHOTS_FILE):
             f.unlink(missing_ok=True)
         import shutil
-        shutil.rmtree(library.CACHE_DIR, ignore_errors=True)
+        shutil.rmtree(paths.CACHE_DIR, ignore_errors=True)
         for p in self.paks.glob("FSD-WindowsNoEditor_karl_*"):
             p.unlink()
         FakeClient.version = {"file_id": 2, "v": "2.0"}
@@ -391,7 +392,7 @@ class Tests(unittest.TestCase):
         self.assertTrue(self.inst("test-mod").exists())
         bad = self.paks.parent / "bad.karl"
         bad.write_text("{}")
-        with self.assertRaises(library.ModioError):
+        with self.assertRaises(modio.ModioError):
             other.read_profile(bad)
 
     def test_no_network_when_switching(self):
@@ -426,10 +427,10 @@ class Tests(unittest.TestCase):
         lib.find_updates()
         lib.update_all(install_updates=True)
         self.assertTrue(lib.has_previous(e.mod_id))
-        orphan = library.CACHE_DIR / "999" / "paks"
+        orphan = paths.CACHE_DIR / "999" / "paks"
         orphan.mkdir(parents=True)
         (orphan / "x.pak").write_bytes(b"x" * 100)
-        thumbs = library.CACHE_DIR / "thumbs"
+        thumbs = paths.CACHE_DIR / "thumbs"
         thumbs.mkdir(parents=True, exist_ok=True)
         (thumbs / "a.img").write_bytes(b"y" * 50)
         rep = lib.cache_report()
@@ -453,11 +454,13 @@ class Tests(unittest.TestCase):
         self.assertFalse(selfupdate.is_newer("0.1.1", "0.1.1"))
         self.assertFalse(selfupdate.is_newer("boh", "0.1.1"))
         import json as _json
-        self.assertEqual(selfupdate.latest_version(lambda u: _json.dumps({"tag_name": "v0.3.0"}).encode()), "0.3.0")
-        self.assertIsNone(selfupdate.latest_version(lambda u: _json.dumps({"tag_name": "v9", "prerelease": True}).encode()))
+        self.assertEqual(selfupdate.latest_release(lambda u: _json.dumps({"tag_name": "v0.3.0"}).encode())["version"], "0.3.0")
+        self.assertIsNone(selfupdate.latest_release(lambda u: _json.dumps({"tag_name": "v9", "prerelease": True}).encode()))
+        self.assertIsNone(selfupdate.latest_release(lambda u: b"[]"))
         def boom(u):
             raise OSError("404")
-        self.assertIsNone(selfupdate.latest_version(boom))
+        self.assertIsNone(selfupdate.latest_release(boom))
+        self.assertIsNone(selfupdate.release_notes("1.0", boom))
 
     def test_rollback(self):
         lib = self.lib
@@ -511,7 +514,7 @@ class Tests(unittest.TestCase):
         with self.assertRaises(Exception):
             Library.parse_share_code("KARL1:non-valido")
         import shutil
-        shutil.rmtree(library.CONFIG_DIR, ignore_errors=True)
+        shutil.rmtree(paths.CONFIG_DIR, ignore_errors=True)
         friend = Library(Config(token="t", paks_dir=str(self.paks)), client_factory=FakeClient)
         self.assertEqual(friend.mods, {})
         name, failed = friend.import_folder(code)
@@ -559,9 +562,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(Path(e.file_path), backup.resolve())
 
     def test_approval_and_unsubscribe(self):
-        self.assertEqual(library.approval_of({"tags": [{"name": "1.39"}, {"name": "Sandbox"}]}),
+        self.assertEqual(entry.approval_of({"tags": [{"name": "1.39"}, {"name": "Sandbox"}]}),
                          "Sandbox")
-        self.assertEqual(library.approval_of({}), "")
+        self.assertEqual(entry.approval_of({}), "")
         FakeClient.subs = {42}
         subs = [{"id": 42, "game_id": 2475, "name": "Test Mod", "name_id": "test-mod",
                  "tags": [{"name": "Approved"}]}]
@@ -601,8 +604,8 @@ class NewFeatureTests(unittest.TestCase):
         self.paks = self.steamapps / "common" / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
         self.paks.mkdir(parents=True)
         (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
@@ -612,7 +615,6 @@ class NewFeatureTests(unittest.TestCase):
         self.lib = Library(self.cfg, client_factory=FakeClient)
 
     def test_md5_passed_and_checked(self):
-        from karl import modio
         info = modio.modfile_info({"modfile": {"id": 3, "filehash": {"md5": "ABC"},
                                                "download": {"binary_url": "u"}}})
         self.assertEqual(info["md5"], "ABC")
@@ -716,8 +718,8 @@ class FolderBugTests(unittest.TestCase):
     def setUp(self):
         self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
         self.paks.mkdir(parents=True)
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
@@ -743,7 +745,7 @@ class FolderBugTests(unittest.TestCase):
     def test_blank_folder_removed_on_load(self):
         self.lib.add("https://mod.io/g/drg/m/test-mod")
         first = self.lib.active_folder
-        library.FOLDERS_FILE.write_text(json.dumps({
+        paths.FOLDERS_FILE.write_text(json.dumps({
             "versione": 2, "attiva": "",
             "cartelle": {first: {"42": True}, "": {"42": True}}}), encoding="utf-8")
         lib = Library(self.cfg, client_factory=FakeClient)
@@ -754,8 +756,8 @@ class ConflictAndUpdateTests(unittest.TestCase):
     def setUp(self):
         self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
         self.paks.mkdir(parents=True)
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         self.cfg = Config(token="t", paks_dir=str(self.paks))
@@ -842,8 +844,8 @@ class BatchFourTests(unittest.TestCase):
         self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
         self.paks.mkdir(parents=True)
         (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
@@ -923,13 +925,13 @@ class InstallsAndScaleTests(unittest.TestCase):
         for p in (self.main_paks, self.beta_paks):
             p.mkdir(parents=True)
             (p / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
         FakeClient.deps = {}
-        self.addCleanup(library.use_install, library.MAIN_INSTALL)
+        self.addCleanup(paths.use_install, paths.MAIN_INSTALL)
 
     def test_scale_helpers(self):
         from karl import ui
@@ -948,7 +950,7 @@ class InstallsAndScaleTests(unittest.TestCase):
         self.assertEqual(cfg.installs[0]["paks_dir"], str(self.main_paks))
         lib = Library(cfg, client_factory=FakeClient)
         lib.add("https://mod.io/g/drg/m/test-mod")
-        main_cache = library.MODS_CACHE
+        main_cache = paths.MODS_CACHE
         self.assertTrue(list(self.main_paks.glob("*karl_test-mod*")))
 
         beta = cfg.add_install("Beta", str(self.beta_paks))
@@ -956,12 +958,12 @@ class InstallsAndScaleTests(unittest.TestCase):
         self.assertEqual(cfg.paks_dir, str(self.beta_paks))
         lib2 = Library(cfg, client_factory=FakeClient)
         self.assertEqual(lib2.mods, {})
-        self.assertNotEqual(library.MODS_CACHE, main_cache)
-        self.assertIn("installs", str(library.LIBRARY_FILE))
+        self.assertNotEqual(paths.MODS_CACHE, main_cache)
+        self.assertIn("installs", str(paths.LIBRARY_FILE))
         FakeClient.version = {"file_id": 2, "v": "2.0"}
         e = lib2.add("https://mod.io/g/drg/m/test-mod")
         self.assertEqual(e.version, "2.0")
-        self.assertTrue(str(e.cached_paks[0]).startswith(str(library.MODS_CACHE)))
+        self.assertTrue(str(e.cached_paks[0]).startswith(str(paths.MODS_CACHE)))
         self.assertTrue(list(self.beta_paks.glob("*karl_test-mod*")))
 
         cfg = Config.load()
@@ -971,7 +973,7 @@ class InstallsAndScaleTests(unittest.TestCase):
         lib3 = Library(cfg, client_factory=FakeClient)
         self.assertEqual(lib3.mods[42].version, "1.0")
         self.assertEqual(Path(lib3.mods[42].cached_paks[0]).read_bytes(), b"PAK1.0")
-        self.assertEqual(library.MODS_CACHE, main_cache)
+        self.assertEqual(paths.MODS_CACHE, main_cache)
 
         cfg.installs = [i for i in cfg.installs if i["id"] != beta]
         cfg.active_install = beta
@@ -1003,8 +1005,8 @@ class ProtonFixTests(unittest.TestCase):
         self.assertEqual(dependency_info({"mod_id": 3, "name": "A &amp; B"})["name"], "A & B")
 
     def test_missing_paks_fails_once(self):
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
@@ -1016,7 +1018,7 @@ class ProtonFixTests(unittest.TestCase):
         lib.save()
         self.assertEqual(Library(cfg, client_factory=FakeClient).mods[42].name, "a & b")
         cfg.paks_dir = str(paks) + "/home/x/Paks"
-        with self.assertRaises(library.ModioError):
+        with self.assertRaises(modio.ModioError):
             lib.update_all()
 
 class HistoryCrashBisectTests(unittest.TestCase):
@@ -1024,8 +1026,8 @@ class HistoryCrashBisectTests(unittest.TestCase):
         self.paks = Path(tempfile.mkdtemp()) / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
         self.paks.mkdir(parents=True)
         (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE, library.HISTORY_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE, paths.HISTORY_FILE):
             if f.exists():
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
@@ -1054,7 +1056,7 @@ class HistoryCrashBisectTests(unittest.TestCase):
         self.assertEqual([c["kind"] for c in changes], ["off"])
         upd = self.lib.history.entries[1]
         self.assertEqual((upd["name"], upd["old"], upd["new"]), ("Test Mod", "1.0", "2.0"))
-        again = History(library.HISTORY_FILE)
+        again = History(paths.HISTORY_FILE)
         self.assertEqual(len(again.entries), 6)
         self.assertEqual([x["kind"] for x in again.listing(search="test")][:2], ["off", "on"])
         self.lib.quiet_toggles = True

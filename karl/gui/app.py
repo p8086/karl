@@ -15,9 +15,10 @@ from typing import Callable, Optional
 from .. import (APP_TITLE, VERSION, browse as browse_mod, crash, game, i18n, log as karl_log,
                 selfupdate, single, tray as karl_tray, ui)
 from ..browse import BrowseTab, flat_button
+from ..config import Config
 from ..details import ModDetails
 from ..i18n import tr
-from ..library import Config, Library
+from ..library import Library
 from ..log import log
 from ..modio import ModioClient, extract_mod_urls
 from ..theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CHIP, FG, FONT,
@@ -618,8 +619,7 @@ class App(tk.Tk):
         cfg.save()
         if not last or not selfupdate.is_newer(VERSION, last) or not cfg.show_whats_new:
             return
-        kw = {"fetch": fetch} if fetch else {}
-        self.submit(lambda: selfupdate.release_notes(VERSION, **kw),
+        self.submit(lambda: selfupdate.release_notes(VERSION, fetch),
                     lambda notes: WhatsNewDialog(self, [], karl_notes=notes) if notes else None,
                     lambda err: None)
 
@@ -651,8 +651,7 @@ class App(tk.Tk):
         self.apply_update_icon()
         if not self.config_.check_karl_updates:
             return
-        kw = {"fetch": fetch} if fetch else {}
-        self.submit(lambda: selfupdate.latest_release(**kw), self._set_karl_release,
+        self.submit(lambda: selfupdate.latest_release(fetch), self._set_karl_release,
                     lambda err: None)
 
     def apply_update_icon(self):
@@ -690,7 +689,6 @@ class App(tk.Tk):
         if self.karl_update_ready():
             self.start_karl_update(self.karl_release)
             return
-        kw = {"fetch": fetch} if fetch else {}
         self.set_status(tr("karl_update.checking"))
 
         def done(rel):
@@ -703,7 +701,7 @@ class App(tk.Tk):
             else:
                 self.set_status(tr("karl_update.up_to_date", version=VERSION))
 
-        self.submit(lambda: selfupdate.latest_release(**kw), done,
+        self.submit(lambda: selfupdate.latest_release(fetch), done,
                     lambda err: self.set_status(tr("karl_update.check_failed")))
 
     def start_karl_update(self, release: dict):

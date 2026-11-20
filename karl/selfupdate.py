@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
@@ -20,8 +21,20 @@ API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 def _http_get(url: str, timeout: int = 10) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "Karl-DRG-mod-manager",
                                                "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        e.close()
+        raise
+
+
+def _get_json(url: str, fetch: Optional[Callable[[str], bytes]]) -> dict:
+    try:
+        data = json.loads((fetch or _http_get)(url))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def parse_version(text: str) -> tuple[int, ...]:
@@ -34,26 +47,12 @@ def is_newer(candidate: str, current: str = VERSION) -> bool:
     return bool(a) and a > b
 
 
-def latest_version(fetch: Callable[[str], bytes] = _http_get) -> Optional[str]:
-    try:
-        data = json.loads(fetch(API))
-    except Exception:
-        return None
-    if data.get("draft") or data.get("prerelease"):
-        return None
-    tag = str(data.get("tag_name") or "")
-    return tag.lstrip("vV") if parse_version(tag) else None
-
-
 WINDOWS_ASSET = "Karl.exe"
 LINUX_ASSET = "karl-linux-x86_64.tar.gz"
 
 
-def latest_release(fetch: Callable[[str], bytes] = _http_get) -> Optional[dict]:
-    try:
-        data = json.loads(fetch(API))
-    except Exception:
-        return None
+def latest_release(fetch: Optional[Callable[[str], bytes]] = None) -> Optional[dict]:
+    data = _get_json(API, fetch)
     if data.get("draft") or data.get("prerelease"):
         return None
     tag = str(data.get("tag_name") or "")
@@ -65,12 +64,9 @@ def latest_release(fetch: Callable[[str], bytes] = _http_get) -> Optional[dict]:
             "page": str(data.get("html_url") or RELEASES_PAGE)}
 
 
-def release_notes(version: str, fetch: Callable[[str], bytes] = _http_get) -> Optional[str]:
+def release_notes(version: str, fetch: Optional[Callable[[str], bytes]] = None) -> Optional[str]:
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v{version.lstrip('vV')}"
-    try:
-        data = json.loads(fetch(url))
-    except Exception:
-        return None
+    data = _get_json(url, fetch)
     body = str(data.get("body") or "").strip()
     return body or None
 

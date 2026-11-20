@@ -9,8 +9,8 @@ from typing import Callable, Optional, TYPE_CHECKING
 
 from .. import APP_TITLE, game, ui
 from ..browse import human_size
+from ..entry import SOURCE_FILE, extract_local_paths
 from ..i18n import tr
-from ..library import SOURCE_FILE, extract_local_paths
 from ..modio import extract_mod_urls
 from ..theme import ACCENT, BG, BORDER, FG, FONT, MUTED, ON_ACCENT, PANEL
 from ..ui import px

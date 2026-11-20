@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from .. import GITHUB_REPO
-from ..library import Config
+from ..config import Config
 from ..theme import ACCENT, BORDER, FG, FONT, MUTED, PANEL
 
 

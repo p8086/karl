@@ -14,7 +14,8 @@ os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from karl import game, integration, pakfile, proton
-from karl.library import Config, Library
+from karl.config import Config
+from karl.library import Library
 
 
 def fstring(s: str) -> bytes:

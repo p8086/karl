@@ -21,9 +21,10 @@ fake_tk.install()
 
 from PIL import Image
 
-from karl import browse, gui, library
+from karl import browse, config, gui, modio, paths
 from karl.browse import LIB_ALL, LIB_NOT_SUB, LIB_SUB, build_query
-from karl.library import Config, Library
+from karl.config import Config
+from karl.library import Library
 
 TAGS = [
     {"name": "Game Version", "type": "checkboxes", "tags": ["1.38", "1.39", "1.40"],
@@ -60,7 +61,7 @@ class FakeModio:
 
     def __init__(self, token):
         if not token:
-            raise library.ModioError("Manca il token")
+            raise modio.ModioError("Manca il token")
         self.token = token
 
     def _log(self, *a):
@@ -68,7 +69,7 @@ class FakeModio:
 
     def me(self):
         if self.token != FakeModio.valid_token:
-            raise library.ModioError("Token mod.io non valido o scaduto (401).")
+            raise modio.ModioError("Token mod.io non valido o scaduto (401).")
         return {"username": "pe8086", "name_id": "giuseppe8086",
                 "profile_url": "https://mod.io/u/giuseppe8086",
                 "avatar": {"thumb_50x50": "https://img/avatar.png"}}
@@ -78,7 +79,7 @@ class FakeModio:
     def check_access(self):
         me = self.me()
         if self.token in FakeModio.no_read_tokens:
-            e = library.ModioError("Token mod.io non valido o scaduto. (401 · 11104)", status=401)
+            e = modio.ModioError("Token mod.io non valido o scaduto. (401 · 11104)", status=401)
             e.read_failed = True
             raise e
         return me
@@ -90,7 +91,7 @@ class FakeModio:
         for m in FakeModio.mods:
             if m["name_id"] == slug:
                 return m
-        raise library.ModioError(f"Mod '{slug}' non trovata.")
+        raise modio.ModioError(f"Mod '{slug}' non trovata.")
 
     def game_tags(self, gid):
         self._log("tags")
@@ -208,14 +209,13 @@ urllib.request.urlopen = offline
 
 class GuiBase(unittest.TestCase):
     def setUp(self):
-        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
-                  library.SNAPSHOTS_FILE):
+        for f in (paths.CONFIG_FILE, paths.LIBRARY_FILE, paths.FOLDERS_FILE,
+                  paths.SNAPSHOTS_FILE):
             if f.exists():
                 f.unlink()
         FakeModio.subs = {5}
         FakeModio.calls = []
         gui.app.ModioClient = FakeModio
-        library.ModioClient = FakeModio
         Library.__init__.__defaults__ = (FakeModio,)
         browse.fetch_bytes = lambda url, timeout=20: png_bytes()
         browse.Image = Image
@@ -229,7 +229,7 @@ class GuiBase(unittest.TestCase):
         self.paks = Path(tempfile.mkdtemp()) / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
         self.paks.mkdir(parents=True)
         self.mods = self.paks.parent.parent / "Mods"
-        library.find_paks_dir = lambda: self.paks
+        config.find_paks_dir = lambda: self.paks
 
     def installed(self, slug):
         found = sorted(self.paks.glob(f"FSD-WindowsNoEditor_karl_{slug}_*_P.pak"))
@@ -801,7 +801,6 @@ class ModioHostTests(unittest.TestCase):
 class ModioRequestTests(unittest.TestCase):
     def test_content_type_on_every_write(self):
         import urllib.request
-        from karl import modio
         sent = []
 
         class Resp(io.BytesIO):
@@ -906,7 +905,7 @@ class KarlInstallTests(GuiBase):
         wrong = Path(tempfile.mkdtemp()) / "a" / "b"
         wrong.mkdir(parents=True)
         lib = Library(Config(token="t", paks_dir=str(wrong)), client_factory=FakeModio)
-        with self.assertRaises(library.ModioError) as cm:
+        with self.assertRaises(modio.ModioError) as cm:
             lib.mods_dir()
         self.assertIn("FSD", str(cm.exception))
         self.assertFalse((wrong.parent.parent / "Mods").exists())
@@ -1644,7 +1643,7 @@ class InstallsScaleGuiTests(GuiBase):
                ignore_modio_subs=True, **cfg).save()
         app = gui.App()
         self.addCleanup(app.pool.shutdown, wait=True)
-        self.addCleanup(library.use_install, library.MAIN_INSTALL)
+        self.addCleanup(paths.use_install, paths.MAIN_INSTALL)
         pump(app, 80)
         return app
 
@@ -1688,7 +1687,7 @@ class InstallsScaleGuiTests(GuiBase):
         self.assertEqual(app.install_lbl.kw["text"], "·  Deep Rock Galactic")
 
         beta_id = [i["id"] for i in app.config_.installs if i["name"] == "Beta"][0]
-        data_dir = library.install_dirs(beta_id)[0]
+        data_dir = paths.install_dirs(beta_id)[0]
         data_dir.mkdir(parents=True, exist_ok=True)
         dlg = gui.settings.SettingsDialog(app)
         dlg.remove_install()
@@ -1739,8 +1738,8 @@ class CrashBisectNewsGuiTests(GuiBase):
     def make_app(self, **cfg):
         FakeModio.subs = set()
         FakeModio.deps = {}
-        if library.HISTORY_FILE.exists():
-            library.HISTORY_FILE.unlink()
+        if paths.HISTORY_FILE.exists():
+            paths.HISTORY_FILE.unlink()
         Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
                ignore_modio_subs=True, last_seen_version=gui.app.VERSION, **cfg).save()
         app = gui.App()

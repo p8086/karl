@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import VERSION, game, integration, proton
+from .entry import SOURCE_FILE
 from .log import LOG_FILE
 from .modio import ModioError, mask_token
 
@@ -37,7 +38,6 @@ def _writable(folder: Path) -> bool:
 
 
 def run(lib: "Library", network: bool = True) -> list[tuple[str, str]]:
-    from .library import SOURCE_FILE, SOURCE_MODIO
     out: list[tuple[str, str]] = []
     add = lambda level, text: out.append((level, text))
     cfg = lib.config

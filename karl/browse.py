@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from . import i18n
 from .i18n import months, tr
-from .library import CACHE_DIR
+from .paths import CACHE_DIR
 from .modio import fetch_bytes, mod_name
 from .ui import px
 from .theme import (ACCENT, ACCENT_HOVER, BG, BORDER, BUTTON, BUTTON_HOVER, CARD, CHIP, FG,
