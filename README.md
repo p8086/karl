@@ -259,6 +259,7 @@ mod.io filter names (groups and tags) are translated too, when the website provi
 - `~/.config/karl/mods.json`: mod list
 - `~/.config/karl/cartelle.json`: mod folders
 - `~/.config/karl/istantanee.json`: time machine snapshots
+- `~/.config/karl/cronologia.json`: history
 - `~/.cache/karl/`: downloaded paks and covers
 - `~/.config/karl/installs/<id>/` and `~/.cache/karl/installs/<id>/`: the same files for each extra game installation
 
@@ -340,6 +341,8 @@ Found a bug or have an idea? Open an issue on the **Issues** page of the reposit
 - [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (MIT license), which Karl downloads and installs to start blueprint mods.
 - [mod.io](https://mod.io), whose public API powers the Browse tab and the downloads.
 - [Pillow](https://python-pillow.org), for mod covers.
+- [tkinterdnd2](https://github.com/Eliav2/tkinterdnd2), for drag and drop.
+- [pystray](https://github.com/moses-palmer/pystray), for the icon in the notification area.
 - All the DRG modders whose mods Karl installs: Karl only downloads them, they remain their authors' work.
 
 ## Disclaimer
