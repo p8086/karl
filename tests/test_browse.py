@@ -125,6 +125,9 @@ class FakeModio:
     def mods_by_ids(self, gid, ids):
         return [m for m in FakeModio.mods if m["id"] in ids and m["id"] not in FakeModio.gone]
 
+    def get_modfile(self, gid, mid, fid):
+        return {"id": fid, "changelog": f"<p>Novità {mid}</p>"}
+
     def rate(self, gid, mid, rating):
         FakeModio.votes[mid] = rating
 
@@ -1766,6 +1769,201 @@ class PaksValidationTests(GuiBase):
         self.assertEqual(mb.messages[-1][0], "error")
         self.assertEqual(Config.load().paks_dir, good)
         self.assertFalse(dlg.destroyed)
+
+class CrashBisectNewsGuiTests(GuiBase):
+    def make_app(self, **cfg):
+        FakeModio.subs = set()
+        FakeModio.deps = {}
+        if library.HISTORY_FILE.exists():
+            library.HISTORY_FILE.unlink()
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True, last_seen_version=gui.VERSION, **cfg).save()
+        app = gui.App()
+        self.addCleanup(app.pool.shutdown, wait=True)
+        pump(app, 80)
+        return app
+
+    def patch(self, obj, name, value):
+        saved = getattr(obj, name)
+        setattr(obj, name, value)
+        self.addCleanup(setattr, obj, name, saved)
+
+    def test_sviluppo_section_has_crash_and_bisect(self):
+        app = self.make_app()
+        texts = []
+
+        def walk(w):
+            for c in w.children_:
+                if c.kw.get("text"):
+                    texts.append(c.kw["text"])
+                walk(c)
+        walk(app.mine)
+        dev = texts.index(gui.tr("dev.title"))
+        self.assertIn(gui.tr("crash.watch"), texts[dev:])
+        self.assertIn(gui.tr("bisect.button"), texts[dev:])
+        app.mine.crash_var.set(False)
+        app.mine._crash_setting_changed()
+        self.assertFalse(Config.load().crash_watch)
+
+    def test_crash_detection(self):
+        app = self.make_app()
+        state = {"running": False}
+        self.patch(gui.game, "is_running", lambda: state["running"])
+        self.patch(gui.game, "launch", lambda: None)
+        shown = []
+        self.patch(gui, "CrashDialog", lambda a, found: shown.append(found))
+        found = {"time": 1.0, "files": ["x"], "detail": "Unhandled Exception: boom", "ue4ss": True}
+        result = {"value": found}
+        self.patch(gui.crash, "find_crash", lambda paks, since: result["value"])
+        app.withdraw_called = []
+        fronts = []
+        self.patch(app, "bring_to_front", lambda: fronts.append(1))
+        app.mine._launch()
+        self.assertGreater(app.config_.last_launch, 0)
+        state["running"] = True
+        app._crash_tick()
+        pump(app)
+        self.assertTrue(app._crash_seen)
+        state["running"] = False
+        app._crash_tick()
+        pump(app)
+        self.assertEqual(shown, [found])
+        self.assertEqual(fronts, [1])
+        self.assertEqual(app.config_.last_launch, 0)
+        self.assertEqual(app.lib.history.entries[-1]["kind"], "crash")
+        result["value"] = None
+        app.mine._launch()
+        app._crash_seen = True
+        app.game_closed()
+        pump(app)
+        self.assertEqual(app.lib.history.entries[-1]["kind"], "session_ok")
+        app.config_.crash_watch = False
+        result["value"] = found
+        app.mine._launch()
+        app.game_closed()
+        pump(app)
+        self.assertEqual(len(shown), 1)
+
+        app.config_.crash_watch = True
+        app.config_.last_launch = 5.0
+        app.config_.save()
+        app2 = gui.App()
+        self.addCleanup(app2.pool.shutdown, wait=True)
+        app2.resume_after_restart()
+        pump(app2)
+        self.assertEqual(len(shown), 2)
+
+    def test_crash_dialog_and_history_tab(self):
+        app = self.make_app()
+        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        app.lib.history.add("session_ok", folder=app.lib.active_folder)
+        app.lib.apply({30: False})
+        dlg = gui.CrashDialog(app, {"time": 1700000000, "files": ["x"],
+                                    "detail": "Unhandled Exception: boom", "ue4ss": False})
+        self.assertIn("boom", dlg.text.buf)
+        self.assertIn("Mod 30", dlg.text.buf)
+        tm = gui.TimeMachineDialog(app.mine)
+        rows = list(tm.hist_tree._rows.values())
+        self.assertTrue(any("Mod 30" in r[2] for r in rows))
+        tm.hist_search.set("nessuna corrispondenza")
+        self.assertEqual(tm.hist_tree.get_children(), [])
+
+    def test_bisect_flow(self):
+        app = self.make_app()
+        lib = app.lib
+        for i in (30, 31, 32, 33, 34):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+        lib.apply({34: False})
+        lib.mods[31].deps = [{"id": 30, "name": "Mod 30", "url": ""}]
+        launched = []
+        self.patch(gui.game, "launch", lambda: launched.append(1))
+        app.mine.open_bisect()
+        dlg = app.bisect_win
+        self.assertEqual(Config.load().bisect_restore,
+                         {"30": True, "31": True, "32": True, "33": True, "34": False})
+        culprit = 32
+        steps = 0
+        dlg.next_test()
+        pump(app)
+        while not dlg.bs.done and steps < 10:
+            on = {m for m, e in lib.mods.items() if e.enabled}
+            self.assertNotIn(34, on)
+            if 31 in on:
+                self.assertIn(30, on)
+            dlg.launch()
+            dlg.answer(culprit in on)
+            pump(app)
+            steps += 1
+        self.assertEqual(dlg.bs.result(), [culprit])
+        self.assertIn("Mod 32", dlg.text.buf)
+        self.assertTrue(launched)
+        dlg.crash_detected({})
+        self.assertIn("crash", dlg.alert.kw["text"].lower())
+        dlg.disable_culprit()
+        pump(app)
+        self.assertEqual({i: e.enabled for i, e in lib.mods.items()},
+                         {30: True, 31: True, 32: False, 33: True, 34: False})
+        self.assertEqual(Config.load().bisect_restore, {})
+        self.assertTrue(dlg.destroyed)
+        kinds = [e["kind"] for e in lib.history.entries]
+        self.assertIn("culprit", kinds)
+        self.assertEqual(kinds.count("off"), 1)
+
+    def test_bisect_restore_after_restart(self):
+        app = self.make_app()
+        lib = app.lib
+        for i in (30, 31):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+        app.mine.open_bisect()
+        app.bisect_win.next_test()
+        pump(app)
+        self.assertFalse(all(e.enabled for e in lib.mods.values()))
+        app2 = gui.App()
+        self.addCleanup(app2.pool.shutdown, wait=True)
+        pump(app2, 80)
+        app2.resume_after_restart()
+        pump(app2, 80)
+        self.assertTrue(all(e.enabled for e in app2.lib.mods.values()))
+        self.assertEqual(Config.load().bisect_restore, {})
+
+    def test_whats_new(self):
+        app = self.make_app()
+        shown = []
+        orig = gui.WhatsNewDialog
+        self.patch(gui, "WhatsNewDialog", lambda *a, **k: shown.append(orig(*a, **k)))
+        app.lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        FakeModio.mods[29]["modfile"]["id"] = 555
+        FakeModio.mods[29]["modfile"]["version"] = "2.0"
+        self.addCleanup(lambda: FakeModio.mods[29]["modfile"].update(id=129, version="1.0"))
+        app.lib.find_updates()
+        app.mine.apply_changes()
+        pump(app, 80)
+        self.assertEqual(len(shown), 1)
+        dlg = shown[0]
+        pump(app)
+        self.assertIn("1.0 → 2.0", dlg.text.buf)
+        self.assertIn("Novità 30", dlg.text.buf)
+        dlg.hide_var.set(True)
+        dlg.close()
+        self.assertFalse(Config.load().show_whats_new)
+        FakeModio.mods[29]["modfile"]["id"] = 556
+        app.lib.find_updates()
+        app.mine.apply_changes()
+        pump(app, 80)
+        self.assertEqual(len(shown), 1)
+
+    def test_karl_notes(self):
+        app = self.make_app()
+        shown = []
+        self.patch(gui, "WhatsNewDialog", lambda *a, **k: shown.append(k.get("karl_notes")))
+        app.config_.last_seen_version = "0.0.1"
+        app.check_karl_notes(fetch=lambda u: b'{"body": "Note di rilascio"}')
+        pump(app)
+        self.assertEqual(shown, ["Note di rilascio"])
+        self.assertEqual(Config.load().last_seen_version, gui.VERSION)
+        app.check_karl_notes(fetch=lambda u: b'{"body": "x"}')
+        pump(app)
+        self.assertEqual(len(shown), 1)
 
 if __name__ == "__main__":
     unittest.main()

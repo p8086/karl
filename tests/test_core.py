@@ -1079,5 +1079,122 @@ class ProtonFixTests(unittest.TestCase):
         with self.assertRaises(library.ModioError):
             lib.update_all()
 
+class HistoryCrashBisectTests(unittest.TestCase):
+    def setUp(self):
+        self.paks = Path(tempfile.mkdtemp()) / "Deep Rock Galactic" / "FSD" / "Content" / "Paks"
+        self.paks.mkdir(parents=True)
+        (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE, library.HISTORY_FILE):
+            if f.exists():
+                f.unlink()
+        FakeClient.version = {"file_id": 1, "v": "1.0"}
+        FakeClient.deps = {}
+        self.cfg = Config(token="t", paks_dir=str(self.paks))
+        self.lib = Library(self.cfg, client_factory=FakeClient)
+
+    def kinds(self):
+        return [e["kind"] for e in self.lib.history.entries]
+
+    def test_history_events(self):
+        from karl.history import History
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        FakeClient.version = {"file_id": 2, "v": "2.0"}
+        self.lib.find_updates()
+        report = self.lib.apply({})
+        self.assertEqual(report["changes"], [{"mod_id": 42, "game_id": 2475, "name": "Test Mod",
+                                              "old": "1.0", "new": "2.0", "file_id": 2}])
+        self.lib.apply({42: False})
+        self.lib.apply({42: True})
+        self.assertEqual(self.lib.apply({})["changes"], [])
+        self.lib.history.add("session_ok", folder=self.lib.active_folder)
+        self.lib.apply({42: False})
+        self.assertEqual(self.kinds(), ["added", "updated", "off", "on", "session_ok", "off"])
+        changes = self.lib.history.changes_since_good(self.lib.active_folder)
+        self.assertEqual([c["kind"] for c in changes], ["off"])
+        upd = self.lib.history.entries[1]
+        self.assertEqual((upd["name"], upd["old"], upd["new"]), ("Test Mod", "1.0", "2.0"))
+        again = History(library.HISTORY_FILE)
+        self.assertEqual(len(again.entries), 6)
+        self.assertEqual([x["kind"] for x in again.listing(search="test")][:2], ["off", "on"])
+        self.lib.quiet_toggles = True
+        self.lib.apply({42: True})
+        self.assertEqual(len(self.lib.history.entries), 6)
+        self.lib.quiet_toggles = False
+        self.lib.remove(42)
+        self.assertEqual(self.kinds()[-1], "removed")
+
+    def test_history_cap(self):
+        from karl import history
+        h = history.History(Path(tempfile.mkdtemp()) / "h.json")
+        for i in range(history.MAX_ENTRIES + 5):
+            h.add("on", name=str(i), save=False)
+        h.save()
+        self.assertEqual(len(history.History(h.path).entries), history.MAX_ENTRIES)
+
+    def test_find_crash(self):
+        import time as _t
+        from karl import crash
+        fsd = self.paks.parent.parent
+        logs = fsd / "Saved" / "Logs"
+        logs.mkdir(parents=True)
+        log = logs / "FSD.log"
+        since = _t.time() - 1
+        log.write_text("[x]LogInit: ok\n", encoding="utf-8")
+        self.assertIsNone(crash.find_crash(self.paks, since))
+        log.write_text("[x]LogWindows: Error: === Critical error: ===\n[x]LogWindows: Error: \n"
+                       "[x]LogWindows: Error: Fatal error!\n"
+                       "[x]LogWindows: Error: Unhandled Exception: EXCEPTION_ACCESS_VIOLATION "
+                       "reading address 0x70\n", encoding="utf-8")
+        found = crash.find_crash(self.paks, since)
+        self.assertEqual(found["detail"],
+                         "Unhandled Exception: EXCEPTION_ACCESS_VIOLATION reading address 0x70")
+        self.assertFalse(found["ue4ss"])
+        win64 = fsd / "Binaries" / "Win64"
+        win64.mkdir(parents=True)
+        (win64 / "crash_2026_11_20_15_09_22.dmp").write_bytes(b"x")
+        self.assertTrue(crash.find_crash(self.paks, since)["ue4ss"])
+        self.assertIsNone(crash.find_crash(self.paks, _t.time() + 60))
+        ue = win64 / "UE4SS.log"
+        ue.write_text("[Karl] KarlLoader 2.0: 21 mod con blueprint\n", encoding="utf-8")
+        self.assertFalse(crash.mods_started(ue, since))
+        ue.write_text("[Lua] [Karl] spacerig: avviate 21 mod\n", encoding="utf-8")
+        self.assertTrue(crash.mods_started(ue, since))
+        self.assertIsNone(crash.mods_started(ue, _t.time() + 60))
+
+    def test_bisect(self):
+        from karl.bisect import Bisect
+        mods = list(range(1, 28))
+        deps = {5: [9], 6: [9], 7: [9, 10], 12: [10]}
+        for culprit in mods:
+            b = Bisect(mods, deps)
+            steps = 0
+            while not b.done and steps < 20:
+                on = {m for m, v in b.states().items() if v}
+                for m in on:
+                    for d in deps.get(m, []):
+                        self.assertIn(d, on)
+                b.answer(culprit in on)
+                steps += 1
+            self.assertEqual(b.result(), [culprit])
+            self.assertLessEqual(steps, b.estimate + 1)
+        b = Bisect([1, 2], {1: [2]})
+        self.assertEqual(b.states(), {1: False, 2: True})
+        b.answer(False)
+        self.assertTrue(b.done)
+        self.assertEqual(b.result(), [1])
+        self.assertEqual(b.required_by_result(), [2])
+        self.assertTrue(Bisect([3], {}).done)
+
+    def test_release_notes(self):
+        import json as _json
+        from karl import selfupdate
+        urls = []
+        notes = selfupdate.release_notes("0.3.0", fetch=lambda u: urls.append(u) or
+                                         _json.dumps({"body": "## Nuovo\n- cose"}).encode())
+        self.assertEqual(notes, "## Nuovo\n- cose")
+        self.assertTrue(urls[0].endswith("/releases/tags/v0.3.0"))
+        self.assertIsNone(selfupdate.release_notes("0.3.0", fetch=lambda u: b"{}"))
+
 if __name__ == "__main__":
     unittest.main()

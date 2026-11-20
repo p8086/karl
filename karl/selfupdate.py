@@ -65,6 +65,16 @@ def latest_release(fetch: Callable[[str], bytes] = _http_get) -> Optional[dict]:
             "page": str(data.get("html_url") or RELEASES_PAGE)}
 
 
+def release_notes(version: str, fetch: Callable[[str], bytes] = _http_get) -> Optional[str]:
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v{version.lstrip('vV')}"
+    try:
+        data = json.loads(fetch(url))
+    except Exception:
+        return None
+    body = str(data.get("body") or "").strip()
+    return body or None
+
+
 def asset_name(platform: str = sys.platform) -> str:
     if platform == "win32":
         return WINDOWS_ASSET

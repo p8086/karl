@@ -100,6 +100,14 @@ class Tray:
             except Exception:
                 pass
 
+    def notify(self, title: str, message: str) -> None:
+        if self.icon is None:
+            return
+        try:
+            self.icon.notify(message or title, title)
+        except Exception:
+            pass
+
     def stop(self) -> None:
         icon, self.icon = self.icon, None
         if icon is not None:

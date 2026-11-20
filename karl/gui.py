@@ -25,9 +25,10 @@ from typing import Callable, Optional
 
 from . import APP_TITLE, GITHUB_REPO, VERSION, game
 from .browse import BrowseTab, Choice, flat_button, human_date, human_size, set_button_style
-from . import browse as browse_mod, diagnostics, selfupdate, single, tray as karl_tray, ui
+from . import browse as browse_mod, crash, diagnostics, selfupdate, single, tray as karl_tray, ui
+from .bisect import Bisect
 from .ui import px
-from .details import ModDetails
+from .details import ModDetails, html_to_text
 from .library import (MODE_LOCAL, MODE_SUBSCRIBE, SOURCE_FILE, Config, Library,
                       extract_local_paths, find_paks_dir, install_dirs)
 from . import i18n
@@ -99,6 +100,8 @@ class App(tk.Tk):
         self.after(5000, self.check_game_update)
         self.after(6000, self.check_removed_mods)
         self.after(1200, self.mine.resume_vanilla)
+        self.after(1500, self.resume_after_restart)
+        self.after(4500, self.check_karl_notes)
         self.tray = karl_tray.Tray(self)
         self.apply_tray()
         self.setup_dnd()
@@ -543,6 +546,109 @@ class App(tk.Tk):
 
     def open_diagnostics(self, parent=None):
         DiagnosticsDialog(self, parent)
+
+    CRASH_POLL_MS = 5000
+    CRASH_START_WAIT_MS = 180000
+
+    def start_crash_watch(self, seen: bool = False):
+        cfg = self.config_
+        if not cfg.last_launch or not seen:
+            cfg.last_launch = time.time()
+            cfg.save()
+        self._crash_seen = seen
+        self._crash_waited = 0
+        job = getattr(self, "_crash_job", None)
+        if job:
+            try:
+                self.after_cancel(job)
+            except tk.TclError:
+                pass
+        self._crash_job = self.after(self.CRASH_POLL_MS, self._crash_tick)
+
+    def _crash_tick(self):
+        self._crash_job = None
+        if not self.config_.last_launch:
+            return
+
+        def done(running):
+            if running:
+                self._crash_seen = True
+            elif self._crash_seen or self._crash_waited >= self.CRASH_START_WAIT_MS:
+                self.game_closed()
+                return
+            self._crash_waited += self.CRASH_POLL_MS
+            self._crash_job = self.after(self.CRASH_POLL_MS, self._crash_tick)
+
+        self.submit(game.is_running, done,
+                    lambda err: setattr(self, "_crash_job",
+                                        self.after(self.CRASH_POLL_MS, self._crash_tick)))
+
+    def game_closed(self):
+        cfg = self.config_
+        since = cfg.last_launch
+        if not since:
+            return
+        cfg.last_launch = 0.0
+        cfg.save()
+
+        def work():
+            try:
+                paks = self.lib.paks_dir()
+            except Exception:
+                return None
+            return crash.find_crash(paks, since - 5)
+
+        self.submit(work, self._after_game_closed, lambda err: None)
+
+    def _after_game_closed(self, found):
+        win = getattr(self, "bisect_win", None)
+        if not found:
+            self.lib.log_event("session_ok")
+            return
+        self.lib.log_event("crash", text=found.get("detail") or "")
+        if win is not None and win.winfo_exists():
+            self.bring_to_front()
+            win.crash_detected(found)
+        elif self.config_.crash_watch:
+            self.bring_to_front()
+            self.tray.notify(tr("crash.title"), found.get("detail") or "")
+            CrashDialog(self, found)
+
+    def resume_after_restart(self):
+        cfg = self.config_
+        if cfg.bisect_restore and not self.busy:
+            states = {int(k): bool(v) for k, v in cfg.bisect_restore.items()}
+            cfg.bisect_restore = {}
+            cfg.save()
+            self.set_status(tr("bisect.restored"))
+
+            def work():
+                report = self.lib.apply({i: on for i, on in states.items() if i in self.lib.mods},
+                                        progress=self.on_progress, log=self.log)
+                self.post(self.mine._after_update, report)
+
+            self.run(tr("bisect.restoring"), work)
+        if cfg.last_launch and not cfg.vanilla_active:
+            def done(running):
+                if running:
+                    self.start_crash_watch(seen=True)
+                else:
+                    self.game_closed()
+            self.submit(game.is_running, done, lambda err: None)
+
+    def check_karl_notes(self, fetch=None):
+        cfg = self.config_
+        last = cfg.last_seen_version
+        if last == VERSION:
+            return
+        cfg.last_seen_version = VERSION
+        cfg.save()
+        if not last or not selfupdate.is_newer(VERSION, last) or not cfg.show_whats_new:
+            return
+        kw = {"fetch": fetch} if fetch else {}
+        self.submit(lambda: selfupdate.release_notes(VERSION, **kw),
+                    lambda notes: WhatsNewDialog(self, [], karl_notes=notes) if notes else None,
+                    lambda err: None)
 
     def set_status(self, msg: str):
         self.status.set(msg)
@@ -1054,6 +1160,13 @@ class MineTab(tk.Frame):
                            bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,
                            activeforeground=FG, anchor="w", justify="left",
                            wraplength=170).pack(fill="x")
+        self.crash_var = tk.BooleanVar(value=cfg.crash_watch)
+        tk.Checkbutton(side, text=tr("crash.watch"), variable=self.crash_var,
+                       command=self._crash_setting_changed, bg=BG, fg=FG, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=FG, anchor="w", justify="left",
+                       wraplength=170).pack(fill="x")
+        ttk.Button(side, text=tr("bisect.button"), command=self.open_bisect, width=20).pack(
+            fill="x", pady=(8, 0))
         self._dev_job = None
         self._dev_waiting = False
         self._schedule_dev()
@@ -1375,6 +1488,28 @@ class MineTab(tk.Frame):
             self.app.show_error(str(err))
             return
         self.app.set_status(tr("play.started"))
+        self.app.start_crash_watch()
+
+    def _crash_setting_changed(self):
+        cfg = self.app.config_
+        cfg.crash_watch = bool(self.crash_var.get())
+        cfg.save()
+
+    def open_bisect(self):
+        if self.app.busy:
+            return
+        win = getattr(self.app, "bisect_win", None)
+        if win is not None and win.winfo_exists():
+            win.lift()
+            return
+        if self.wanted:
+            messagebox.showwarning(APP_TITLE, tr("bisect.unsaved"))
+            return
+        on = [m.mod_id for m in self.lib.folder_mods() if m.enabled]
+        if len(on) < 2:
+            messagebox.showinfo(APP_TITLE, tr("bisect.too_few"))
+            return
+        self.app.bisect_win = BisectDialog(self.app)
 
     VANILLA_POLL_MS = 5000
     VANILLA_START_WAIT_MS = 180000
@@ -1881,6 +2016,8 @@ class MineTab(tk.Frame):
             more = ("\n" + tr("mine.failed_more", n=len(report["failed"]) - 15)
                     if len(report["failed"]) > 15 else "")
             self.app.show_error(f"{tr('mine.update_failed_title')}\n\n{lines}{more}")
+        if report.get("changes") and self.app.config_.show_whats_new:
+            WhatsNewDialog(self.app, report["changes"])
 
     def open_page(self):
         for i in self.selected_ids():
@@ -2077,8 +2214,17 @@ class TimeMachineDialog(tk.Toplevel):
         self.configure(bg=BG)
         self.transient(tab.app)
         self.minsize(640, 360)
-        f = tk.Frame(self, bg=BG, padx=16, pady=14)
-        f.pack(fill="both", expand=True)
+        outer = tk.Frame(self, bg=BG, padx=16, pady=14)
+        outer.pack(fill="both", expand=True)
+        nb = ttk.Notebook(outer)
+        nb.pack(fill="both", expand=True)
+        f = tk.Frame(nb, bg=BG, pady=8)
+        hist = tk.Frame(nb, bg=BG, pady=8)
+        nb.add(f, text=tr("tm.tab_snapshots"))
+        nb.add(hist, text=tr("tm.tab_history"))
+        self.notebook = nb
+        self.hist_tab = hist
+        self._build_history(hist)
         tk.Label(f, text=tr("tm.intro"), bg=BG, fg=MUTED, font=(FONT, 9), justify="left",
                  wraplength=600).pack(anchor="w", pady=(0, 8))
         cols = ("when", "folder", "mods", "changes")
@@ -2097,11 +2243,51 @@ class TimeMachineDialog(tk.Toplevel):
             tk.Label(f, text=tr("tm.empty"), bg=BG, fg=MUTED, font=(FONT, 10)).pack(pady=8)
         else:
             self.tree.selection_set([rows[0][0]["id"]])
-        btns = tk.Frame(f, bg=BG)
+        btns = tk.Frame(outer, bg=BG)
         btns.pack(fill="x", pady=(10, 0))
         ttk.Button(btns, text=tr("tm.close"), command=self.destroy).pack(side="right")
         ttk.Button(btns, text=tr("tm.restore"), style="Accent.TButton",
                    command=self.restore).pack(side="right", padx=(0, 8))
+
+    def _build_history(self, parent):
+        lib = self.tab.lib
+        bar = tk.Frame(parent, bg=BG)
+        bar.pack(fill="x", pady=(0, 8))
+        tk.Label(bar, text=tr("folder.label"), bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        self.hist_all = tr("tm.all_folders")
+        self.hist_folder = tk.StringVar(value=self.hist_all)
+        combo = ttk.Combobox(bar, textvariable=self.hist_folder, state="readonly", width=20,
+                             values=[self.hist_all] + list(lib.folders))
+        combo.pack(side="left", padx=(6, 12))
+        combo.bind("<<ComboboxSelected>>", lambda _e: self.render_history())
+        tk.Label(bar, text="⌕", bg=BG, fg=MUTED, font=(FONT, 11)).pack(side="left")
+        self.hist_search = tk.StringVar()
+        ttk.Entry(bar, textvariable=self.hist_search, width=26).pack(side="left", padx=(6, 0))
+        self.hist_search.trace_add("write", lambda *_a: self.render_history())
+        cols = ("when", "folder", "event")
+        self.hist_tree = ttk.Treeview(parent, columns=cols, show="headings", height=12,
+                                      selectmode="browse")
+        for c, w in zip(cols, (130, 120, 420)):
+            self.hist_tree.heading(c, text=tr(f"tm.hcol_{c}"))
+            self.hist_tree.column(c, width=w, anchor="w")
+        self.hist_tree.pack(fill="both", expand=True)
+        self.hist_empty = tk.Label(parent, text=tr("tm.history_empty"), bg=BG, fg=MUTED,
+                                   font=(FONT, 10))
+        self.render_history()
+
+    def render_history(self):
+        folder = self.hist_folder.get()
+        rows = self.tab.lib.history.listing(None if folder == self.hist_all else folder,
+                                            self.hist_search.get())
+        self.hist_tree.delete(*self.hist_tree.get_children())
+        for n, e in enumerate(rows[:2000]):
+            self.hist_tree.insert("", "end", iid=str(n), values=(
+                format_when(datetime.fromtimestamp(e["t"]).isoformat()), e.get("folder", ""),
+                history_text(e)))
+        if rows:
+            self.hist_empty.pack_forget()
+        else:
+            self.hist_empty.pack(pady=8)
 
     def restore(self):
         sel = self.tree.selection()
@@ -2113,6 +2299,309 @@ class TimeMachineDialog(tk.Toplevel):
             return
         self.destroy()
         self.tab.restore_snapshot(sel[0])
+
+
+def history_text(e: dict) -> str:
+    kind = e.get("kind", "")
+    key = f"hist.{kind}"
+    text = tr(key, name=e.get("name", ""), old=e.get("old", ""), new=e.get("new", ""),
+              text=e.get("text", ""))
+    return kind if text == key else text
+
+
+def _text_box(parent, height: int = 14) -> tk.Text:
+    box = tk.Frame(parent, bg=BORDER, padx=1, pady=1)
+    box.pack(fill="both", expand=True)
+    t = tk.Text(box, wrap="word", bg=PANEL, fg=FG, relief="flat", bd=0, padx=10, pady=8,
+                font=(FONT, 10), height=height, highlightthickness=0)
+    sb = ttk.Scrollbar(box, orient="vertical", command=t.yview)
+    sb.pack(side="right", fill="y")
+    t.pack(side="left", fill="both", expand=True)
+    t.configure(yscrollcommand=sb.set)
+    t.tag_configure("title", font=(FONT, 10, "bold"), foreground=ACCENT)
+    t.tag_configure("muted", foreground=MUTED)
+    t.tag_configure("warn", foreground="#e05a4f")
+    return t
+
+
+def _fill_text(t: tk.Text, chunks: list[tuple[str, str]]) -> None:
+    t.configure(state="normal")
+    t.delete("1.0", "end")
+    for text, tag in chunks:
+        if tag:
+            t.insert("end", text, tag)
+        else:
+            t.insert("end", text)
+    t.configure(state="disabled")
+
+
+class WhatsNewDialog(tk.Toplevel):
+    def __init__(self, app: App, changes: list[dict], karl_notes: Optional[str] = None):
+        super().__init__(app)
+        self.app = app
+        self.changes = list(changes)
+        self.karl_notes = karl_notes
+        self.logs: dict[int, str] = {}
+        self.title(tr("news.title"))
+        self.configure(bg=BG, padx=16, pady=14)
+        self.geometry(f"{px(720)}x{px(560)}")
+        self.transient(app)
+        head = tr("news.karl", version=VERSION) if karl_notes else tr("news.mods",
+                                                                       n=len(self.changes))
+        tk.Label(self, text=head, bg=BG, fg=FG, font=(FONT, 12, "bold"), anchor="w",
+                 justify="left").pack(fill="x", pady=(0, 8))
+        self.text = _text_box(self)
+        bottom = tk.Frame(self, bg=BG)
+        bottom.pack(fill="x", pady=(10, 0))
+        self.hide_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bottom, text=tr("news.dont_show"), variable=self.hide_var, bg=BG, fg=FG,
+                       selectcolor=PANEL, activebackground=BG, activeforeground=FG).pack(
+            side="left")
+        ttk.Button(bottom, text=tr("details.close"), command=self.close).pack(side="right")
+        self.protocol("WM_DELETE_WINDOW", self.close)
+        self.render()
+        self.load()
+
+    def load(self):
+        todo = [c for c in self.changes if c.get("file_id") and c.get("game_id")]
+        if not todo or not self.app.config_.logged_in:
+            return
+
+        def work():
+            client = self.app.client()
+            out = {}
+            for c in todo:
+                try:
+                    mf = client.get_modfile(c["game_id"], c["mod_id"], c["file_id"])
+                    out[c["mod_id"]] = html_to_text(mf.get("changelog") or "")
+                except Exception:
+                    out[c["mod_id"]] = ""
+            return out
+
+        self.app.submit(work, self._loaded, lambda err: None)
+
+    def _loaded(self, logs: dict):
+        if self.winfo_exists():
+            self.logs = logs
+            self.render()
+
+    def render(self):
+        chunks: list[tuple[str, str]] = []
+        if self.karl_notes:
+            chunks.append((html_to_text(self.karl_notes) or self.karl_notes, ""))
+        for c in self.changes:
+            chunks.append((f"{c.get('name', '')}   ", "title"))
+            chunks.append((f"{c.get('old') or '-'} → {c.get('new') or '-'}\n", "muted"))
+            log = self.logs.get(c["mod_id"])
+            if log is None and self.app.config_.logged_in and c.get("file_id"):
+                chunks.append((tr("details.loading") + "\n\n", "muted"))
+            else:
+                chunks.append(((log or tr("details.no_changelog")) + "\n\n", "" if log else "muted"))
+        _fill_text(self.text, chunks)
+
+    def close(self):
+        if self.hide_var.get():
+            self.app.config_.show_whats_new = False
+            self.app.config_.save()
+        self.destroy()
+
+
+class CrashDialog(tk.Toplevel):
+    def __init__(self, app: App, found: dict):
+        super().__init__(app)
+        self.app = app
+        self.title(tr("crash.title"))
+        self.configure(bg=BG, padx=16, pady=14)
+        self.geometry(f"{px(640)}x{px(480)}")
+        self.transient(app)
+        tk.Label(self, text=tr("crash.title"), bg=BG, fg="#e05a4f", font=(FONT, 13, "bold"),
+                 anchor="w").pack(fill="x")
+        when = datetime.fromtimestamp(found.get("time") or time.time()).strftime("%H:%M")
+        kind = tr("crash.kind_ue4ss") if found.get("ue4ss") else tr("crash.kind_game")
+        tk.Label(self, text=tr("crash.intro", when=when, kind=kind), bg=BG, fg=MUTED,
+                 font=(FONT, 9), anchor="w", justify="left", wraplength=px(600)).pack(
+            fill="x", pady=(4, 8))
+        self.text = _text_box(self, height=10)
+        lib = app.lib
+        changes = lib.history.changes_since_good(lib.active_folder)
+        chunks: list[tuple[str, str]] = []
+        if found.get("detail"):
+            chunks.append((tr("crash.error") + "\n", "title"))
+            chunks.append((found["detail"] + "\n\n", "warn"))
+        chunks.append((tr("crash.changes") + "\n", "title"))
+        if changes:
+            for e in changes[-20:]:
+                chunks.append((f"{format_when(datetime.fromtimestamp(e['t']).isoformat())}  ",
+                               "muted"))
+                chunks.append((history_text(e) + "\n", ""))
+        else:
+            chunks.append((tr("crash.no_changes") + "\n", "muted"))
+        _fill_text(self.text, chunks)
+        btns = tk.Frame(self, bg=BG)
+        btns.pack(fill="x", pady=(10, 0))
+        ttk.Button(btns, text=tr("crash.find"), style="Accent.TButton",
+                   command=self.find).pack(side="left")
+        ttk.Button(btns, text=tr("crash.time_machine"), command=self.time_machine).pack(
+            side="left", padx=(6, 0))
+        ttk.Button(btns, text=tr("crash.ignore"), command=self.destroy).pack(side="right")
+
+    def find(self):
+        self.destroy()
+        self.app.notebook.select(self.app.mine)
+        self.app.mine.open_bisect()
+
+    def time_machine(self):
+        self.destroy()
+        self.app.notebook.select(self.app.mine)
+        self.app.mine.open_time_machine()
+
+
+class BisectDialog(tk.Toplevel):
+    def __init__(self, app: App):
+        super().__init__(app)
+        self.app = app
+        lib = app.lib
+        self.lib = lib
+        self.folder = lib.active_folder
+        mods = lib.folder_mods()
+        self.original = {m.mod_id: m.enabled for m in mods}
+        candidates = [m.mod_id for m in mods if m.enabled]
+        deps = {m.mod_id: [d["id"] for d in (m.deps or [])] for m in mods}
+        self.bs = Bisect(candidates, deps)
+        self.finished = False
+        cfg = app.config_
+        cfg.bisect_restore = {str(k): v for k, v in self.original.items()}
+        cfg.save()
+        lib.log_event("bisect", text=str(len(candidates)))
+        lib.quiet_toggles = True
+        self.title(tr("bisect.title"))
+        self.configure(bg=BG, padx=16, pady=14)
+        self.geometry(f"{px(660)}x{px(560)}")
+        self.transient(app)
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+        tk.Label(self, text=tr("bisect.title"), bg=BG, fg=FG, font=(FONT, 13, "bold"),
+                 anchor="w").pack(fill="x")
+        self.info = tk.Label(self, text=tr("bisect.intro", n=len(candidates),
+                                           steps=self.bs.estimate),
+                             bg=BG, fg=MUTED, font=(FONT, 9), anchor="w", justify="left",
+                             wraplength=px(620))
+        self.info.pack(fill="x", pady=(4, 6))
+        self.progress = tk.Label(self, text="", bg=BG, fg=ACCENT, font=(FONT, 10, "bold"),
+                                 anchor="w")
+        self.progress.pack(fill="x")
+        self.alert = tk.Label(self, text="", bg=BG, fg="#e05a4f", font=(FONT, 9, "bold"),
+                              anchor="w", justify="left", wraplength=px(620))
+        self.alert.pack(fill="x")
+        self.text = _text_box(self, height=12)
+        self.btns = tk.Frame(self, bg=BG)
+        self.btns.pack(fill="x", pady=(10, 0))
+        self._buttons([("bisect.start", self.next_test, True)])
+        _fill_text(self.text, [(tr("bisect.how") + "\n", "")])
+
+    def _buttons(self, spec):
+        for w in self.btns.winfo_children():
+            w.destroy()
+        for key, cmd, accent in spec:
+            ttk.Button(self.btns, text=tr(key), command=cmd,
+                       style="Accent.TButton" if accent else "TButton").pack(
+                side="left", padx=(0, 6))
+        ttk.Button(self.btns, text=tr("bisect.cancel"), command=self.cancel).pack(side="right")
+
+    def _names(self, ids) -> list[str]:
+        return [self.lib.mods[i].name for i in ids if i in self.lib.mods]
+
+    def _apply(self, states: dict[int, bool], then):
+        def work():
+            report = self.lib.apply({i: on for i, on in states.items() if i in self.lib.mods},
+                                    progress=self.app.on_progress, log=self.app.log)
+            self.app.post(self._applied, report, then)
+
+        self.app.run(tr("bisect.preparing"), work)
+
+    def _applied(self, report: dict, then):
+        if report.get("failed"):
+            self.app.mine._after_update(report)
+            return
+        if self.winfo_exists():
+            then()
+
+    def next_test(self):
+        self.alert.configure(text="")
+        self._apply(self.bs.states(), self._show_test)
+
+    def _show_test(self):
+        bs = self.bs
+        on = [m for m in bs.all if m in bs.on]
+        off = [m for m in bs.all if m not in bs.on]
+        self.progress.configure(text=tr("bisect.step", i=bs.step + 1, n=bs.estimate,
+                                        k=len(bs.suspects)))
+        chunks = [(tr("bisect.test") + "\n\n", ""),
+                  (tr("bisect.on", n=len(on)) + "\n", "title"),
+                  (", ".join(self._names(on)) + "\n\n", ""),
+                  (tr("bisect.off", n=len(off)) + "\n", "title"),
+                  (", ".join(self._names(off)) + "\n", "muted")]
+        _fill_text(self.text, chunks)
+        self._buttons([("bisect.launch", self.launch, True),
+                       ("bisect.broken", lambda: self.answer(True), False),
+                       ("bisect.works", lambda: self.answer(False), False)])
+
+    def launch(self):
+        self.app.mine._launch()
+
+    def crash_detected(self, found: dict):
+        if self.winfo_exists():
+            self.alert.configure(text=tr("bisect.crash_seen"))
+
+    def answer(self, broken: bool):
+        if self.app.busy:
+            return
+        self.bs.answer(broken)
+        if self.bs.done:
+            self.show_result()
+        else:
+            self.next_test()
+
+    def show_result(self):
+        bs = self.bs
+        names = self._names(bs.result())
+        req = self._names(bs.required_by_result())
+        self.progress.configure(text=tr("bisect.found_title"))
+        chunks = [(tr("bisect.found", name=", ".join(names)) + "\n\n", "title")]
+        if req:
+            chunks.append((tr("bisect.found_req", mods=", ".join(req)) + "\n\n", "muted"))
+        chunks.append((tr("bisect.found_hint") + "\n", ""))
+        _fill_text(self.text, chunks)
+        self.lib.log_event("culprit", name=", ".join(names))
+        self._buttons([("bisect.disable", self.disable_culprit, True),
+                       ("bisect.restore", self.restore_all, False)])
+
+    def disable_culprit(self):
+        states = dict(self.original)
+        for m in self.bs.result():
+            states[m] = False
+        self._apply(states, self.finish)
+
+    def restore_all(self):
+        self._apply(dict(self.original), self.finish)
+
+    def cancel(self):
+        if self.app.busy:
+            return
+        if self.finished:
+            self.destroy()
+            return
+        self.restore_all()
+
+    def finish(self):
+        self.finished = True
+        self.lib.quiet_toggles = False
+        cfg = self.app.config_
+        cfg.bisect_restore = {}
+        cfg.save()
+        self.app.bisect_win = None
+        self.app.refresh_mine()
+        self.app.set_status(tr("bisect.done"))
+        self.destroy()
 
 
 class SettingsDialog(tk.Toplevel):
@@ -2190,6 +2679,7 @@ class SettingsDialog(tk.Toplevel):
         self.warn_removed = tk.BooleanVar(value=cfg.warn_removed)
         self.tray_icon = tk.BooleanVar(value=cfg.tray_icon)
         self.close_to_tray = tk.BooleanVar(value=cfg.close_to_tray)
+        self.whats_new = tk.BooleanVar(value=cfg.show_whats_new)
         checks = {}
         for row, (var, key, pad) in enumerate(
                 ((self.auto_updates, "settings.auto_updates", 0),
@@ -2197,7 +2687,8 @@ class SettingsDialog(tk.Toplevel):
                  (self.karl_startup, "settings.karl_startup", 24),
                  (self.warn_removed, "settings.warn_removed", 0),
                  (self.tray_icon, "settings.tray_icon", 0),
-                 (self.close_to_tray, "settings.close_to_tray", 24)), 10):
+                 (self.close_to_tray, "settings.close_to_tray", 24),
+                 (self.whats_new, "settings.whats_new", 0)), 10):
             checks[key] = tk.Checkbutton(f, text=tr(key), variable=var, bg=BG, fg=FG,
                                          selectcolor=PANEL, activebackground=BG,
                                          activeforeground=FG, disabledforeground=MUTED,
@@ -2212,7 +2703,7 @@ class SettingsDialog(tk.Toplevel):
                                                    + tr("settings.tray_missing"))
         self._sync_karl_startup()
         tools = ttk.Frame(f)
-        tools.grid(row=16, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        tools.grid(row=17, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Button(tools, text=tr("profile.export"),
                    command=lambda: app.export_profile(self)).pack(side="left")
         ttk.Button(tools, text=tr("profile.import"),
@@ -2220,14 +2711,14 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(tools, text=tr("cache.button"),
                    command=lambda: CacheDialog(app)).pack(side="left", padx=(6, 0))
         tools2 = ttk.Frame(f)
-        tools2.grid(row=17, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        tools2.grid(row=18, column=0, columnspan=2, sticky="w", pady=(6, 0))
         ttk.Button(tools2, text=tr("diag.button"),
                    command=lambda: app.open_diagnostics(self)).pack(side="left")
         ttk.Button(tools2, text=tr("log.open"), command=app.open_log).pack(
             side="left", padx=(6, 0))
 
         ttk.Button(f, text=tr("settings.save"), style="Accent.TButton", command=self.save).grid(
-            row=18, column=1, sticky="e", pady=(16, 0))
+            row=19, column=1, sticky="e", pady=(16, 0))
 
     def _sync_karl_startup(self):
         self.karl_startup_check.configure(
@@ -2441,6 +2932,7 @@ class SettingsDialog(tk.Toplevel):
         cfg.warn_removed = bool(self.warn_removed.get())
         cfg.tray_icon = bool(self.tray_icon.get())
         cfg.close_to_tray = bool(self.close_to_tray.get()) and cfg.tray_icon
+        cfg.show_whats_new = bool(self.whats_new.get())
         new_lang = self.language.key
         lang_changed = new_lang != (cfg.language or i18n.AUTO)
         cfg.save()

@@ -30,6 +30,7 @@ FOLDERS_FILE = CONFIG_DIR / "cartelle.json"
 SNAPSHOTS_FILE = CONFIG_DIR / "istantanee.json"
 SNAPSHOT_BLOBS = CACHE_DIR / "istantanee"
 MODS_CACHE = CACHE_DIR
+HISTORY_FILE = CONFIG_DIR / "cronologia.json"
 MAIN_INSTALL = "main"
 
 
@@ -41,8 +42,9 @@ def install_dirs(install_id: str) -> tuple[Path, Path]:
 
 
 def use_install(install_id: str) -> None:
-    global LIBRARY_FILE, FOLDERS_FILE, SNAPSHOTS_FILE, SNAPSHOT_BLOBS, MODS_CACHE
+    global LIBRARY_FILE, FOLDERS_FILE, SNAPSHOTS_FILE, SNAPSHOT_BLOBS, MODS_CACHE, HISTORY_FILE
     cfg_dir, cache_dir = install_dirs(install_id)
+    HISTORY_FILE = cfg_dir / "cronologia.json"
     LIBRARY_FILE = cfg_dir / "mods.json"
     FOLDERS_FILE = cfg_dir / "cartelle.json"
     SNAPSHOTS_FILE = cfg_dir / "istantanee.json"
@@ -133,6 +135,11 @@ class Config:
     game_build: str = ""
     compact_links: bool = False
     ui_scale: float = 1.0
+    crash_watch: bool = True
+    show_whats_new: bool = True
+    last_launch: float = 0.0
+    last_seen_version: str = ""
+    bisect_restore: dict = field(default_factory=dict)
     installs: list = field(default_factory=list)
     active_install: str = MAIN_INSTALL
 
@@ -300,7 +307,10 @@ class Library:
         self.mods: dict[int, ModEntry] = {}
         self.folders: dict[str, dict[int, bool]] = {}
         self.active_folder: str = ""
+        self._changes: list[dict] = []
         self.load()
+        from .history import History
+        self.history = History(HISTORY_FILE)
         from .timemachine import TimeMachine
         self.time_machine = TimeMachine(self, SNAPSHOTS_FILE, SNAPSHOT_BLOBS)
 
@@ -367,6 +377,7 @@ class Library:
         for i, e in self.mods.items():
             e.enabled = bool(folder.get(i, False))
         self.save()
+        self.log_event("folder", new=name)
 
     def _check_name(self, name: str) -> str:
         name = (name or "").strip()
@@ -494,8 +505,11 @@ class Library:
         folder = self.folders[self.active_folder]
         new = {i: folder[i] for i in ids if i in folder}
         new.update({i: v for i, v in folder.items() if i not in new})
+        changed = list(new) != list(folder)
         self.folders[self.active_folder] = new
         self.save()
+        if changed:
+            self.log_event("order")
 
     def needs_reorder(self, e: ModEntry) -> bool:
         return bool(e.enabled and e.installed_paks and e.installed_paks != self._pak_names(e))
@@ -612,7 +626,9 @@ class Library:
                   progress: Optional[Callable[[int, int], None]]) -> None:
         info = modfile_info(mod)
         mod_cache = MODS_CACHE / str(entry.mod_id)
-        if entry.file_id is not None and info["file_id"] != entry.file_id:
+        updating = entry.file_id is not None and info["file_id"] != entry.file_id
+        old_version = entry.version
+        if updating:
             self._keep_previous(entry)
         archive = self.client.download(info["url"], mod_cache / "download" / info["filename"],
                                        progress, md5=info.get("md5", ""))
@@ -622,6 +638,11 @@ class Library:
         entry.file_id = info["file_id"]
         entry.version = info["version"]
         entry.updated_at = float(info.get("date") or time.time())
+        if updating:
+            self.log_event("updated", entry, old=old_version or "-", new=entry.version or "-")
+            self._changes.append({"mod_id": entry.mod_id, "game_id": entry.game_id,
+                                  "name": entry.name, "old": old_version, "new": entry.version,
+                                  "file_id": entry.file_id})
 
     def add(self, url: str, mode: Optional[str] = None,
             progress: Optional[Callable[[int, int], None]] = None,
@@ -658,6 +679,7 @@ class Library:
 
         self.mods[mod_id] = entry
         self.save()
+        self.log_event("added", entry, new=entry.version)
         log(tr("lib.added", name=entry.name))
         return entry
 
@@ -680,6 +702,7 @@ class Library:
 
         entry = next((m for m in self.mods.values()
                       if m.source == SOURCE_FILE and m.slug == slug), None)
+        is_new = entry is None
         if entry is None:
             new_id = min([m.mod_id for m in self.mods.values() if m.mod_id < 0], default=0) - 1
             entry = ModEntry(mod_id=new_id, game_id=0, name=stem, slug=slug, url="",
@@ -689,8 +712,20 @@ class Library:
         self._copy_to_game(entry)
         self.mods[entry.mod_id] = entry
         self.save()
+        self.log_event("added" if is_new else "updated", entry, new=entry.version)
         log(tr("lib.added", name=entry.name))
         return entry
+
+    def log_event(self, kind: str, entry: Optional[ModEntry] = None, **kw) -> None:
+        history = getattr(self, "history", None)
+        if history is None:
+            return
+        if kind in ("on", "off") and getattr(self, "quiet_toggles", False):
+            return
+        if entry is not None:
+            kw.setdefault("name", entry.name)
+            kw.setdefault("mod_id", entry.mod_id)
+        history.add(kind, folder=self.active_folder, **kw)
 
     def _import_file(self, entry: ModEntry, src: Path) -> None:
         if entry.cached_paks and src.is_file() and src.stat().st_mtime != entry.file_mtime:
@@ -742,6 +777,7 @@ class Library:
         if e.enabled:
             self._copy_to_game(e)
         self.save()
+        self.log_event("rollback", e, new=e.version or "-")
         log(tr("rollback.done", name=e.name, version=e.version or "-"))
         return e
 
@@ -1059,6 +1095,7 @@ class Library:
             e.enabled = False
             self._remove_from_game(e)
             self.save()
+            self.log_event("removed", e)
             log(tr("lib.removed", name=e.name))
             return
         e = self.mods.pop(mod_id)
@@ -1067,12 +1104,15 @@ class Library:
         finally:
             shutil.rmtree(MODS_CACHE / str(mod_id), ignore_errors=True)
             self.save()
+        self.log_event("removed", e)
         log(tr("lib.removed", name=e.name))
 
     def update_all(self, progress: Optional[Callable[[int, int], None]] = None,
                    log: Callable[[str], None] = lambda s: None,
                    check: bool = False, install_updates: bool = False) -> dict:
-        report: dict = {"updated": [], "installed": [], "ok": 0, "failed": [], "sub_ids": None}
+        report: dict = {"updated": [], "installed": [], "ok": 0, "failed": [], "sub_ids": None,
+                        "changes": []}
+        self._changes = []
         if any(e.enabled for e in self.mods.values()):
             self.paks_dir()
         self.convert_to_local()
@@ -1100,6 +1140,7 @@ class Library:
                 pass
         log(tr("lib.update_summary", updated=len(report["updated"]),
                installed=len(report["installed"]), ok=report["ok"]))
+        report["changes"] = list(self._changes)
         return report
 
     def _update_entry(self, e: ModEntry, client: Optional[ModioClient],
@@ -1299,6 +1340,8 @@ class Library:
               log: Callable[[str], None] = lambda s: None) -> dict:
         for mid, on in wanted.items():
             if mid in self.mods:
+                if self.mods[mid].enabled != on:
+                    self.log_event("on" if on else "off", self.mods[mid])
                 self.mods[mid].enabled = on
         report = self.update_all(progress=progress, log=log, install_updates=True)
         failed = {name for name, _ in report["failed"]}
