@@ -36,7 +36,7 @@ Karl needs Tkinter, which many distributions ship as a separate package:
 
 Then run `python3 main.py`, or build the executable with `bash build_linux.sh`: it creates `dist/karl` and adds **Karl** to your applications menu.
 
-Pillow is used for mod covers, which are often JPEG. Without it Karl still works but only shows PNG covers.
+Pillow is used for mod covers, which are often JPEG. Without it Karl still works but only shows PNG covers. `pip install -r requirements.txt` also installs **tkinterdnd2** (drag and drop) and **pystray** (icon in the notification area): both are optional, and without them Karl simply hides those features. The executables in the releases include them.
 
 ### Linux and Proton
 
@@ -115,15 +115,23 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Play.** The **▶ Play** button applies pending changes (like Install and save) and starts DRG through Steam. If the game is already running it does nothing.
 
+**Play without mods.** The button next to Play takes all of Karl's mods out of the game (they stay in your folders, nothing is deleted), starts DRG and waits: when you close the game, Karl puts the mods back by itself. If you close Karl meanwhile, the mods are put back the next time you open it.
+
 **Previous version.** When a mod updates, Karl keeps the previous version in its cache. If an update breaks something, select the mod and press **Previous version**: it goes back and stays locked (🔒 next to the version), so Install and save won't update it again. Pressing the same button again brings back the latest one.
 
 **Time machine.** Every time you press **Install and save** (also through Play or when switching folder) Karl takes a snapshot of the active folder: which mods it had, in what order, on or off and at which version. If nothing changed, no new snapshot is made. **🕘 Time machine** lists them by date, with a summary of what changed each time (mods added or removed, versions, switches, order). Pick a moment and press **Restore**: the folder goes back exactly as it was, even with mods you had removed meanwhile. Mods brought back to a different version stay locked (🔒) until you press **Previous version** to return to the latest one. Each version's .pak files are stored only once (`~/.cache/karl/istantanee/`) and Karl keeps the last 50 snapshots of each folder (a folder you use a lot doesn't erase the others' history; if you rename a folder, its history follows it).
 
 **Favorites and notes.** Click the ☆ at the right end of a row to add the mod to your favorites (★), click again to remove it. The **Show** drop-down above the list switches between all mods and favorites only (to change the load order, show all mods). Select a mod and press **Note…** to write a short note (for example "only with friends" or "breaks the HUD with X"): mods with a note show ✎ next to their name, and selecting one shows the note in the status bar.
 
-**Search.** The ⌕ box above the list filters the active folder as you type, by name or note (Esc clears it). While the list is filtered, the load order can't be changed.
+**Search, sorting and sizes.** The ⌕ box above the list filters the active folder as you type, by name, note or tag (Esc clears it). **Sort** orders the list by load order (the default), name, size, date added or last update, and the **Size** column shows how much space each mod takes. While the list is filtered or sorted by something other than load order, the load order can't be changed.
 
-**Mod details.** Double-click a mod in My mods, or click a card in Browse: a window shows cover, author, stats, the game versions the mod is marked for, the full description, its images (click one to open it full size), the last versions with their changelog, and the mods it requires. Buttons open the mod.io page or copy the link.
+**Tags.** Select one or more mods and press **Tags…** to give them your own labels, separated by commas (for example `HUD, Audio, To try`). Tags show next to the name, the **Show** drop-down gets a *Tag: …* entry for each one, and the search finds them too. Tags travel with **Export configuration**.
+
+**Drag and drop.** Drop `.pak` or `.zip` files, or mod.io links dragged from the browser, anywhere on Karl's window: they go into the *Mod links* box and Karl adds them right away.
+
+**Removed mods.** With **Warn me when a mod I use is removed from mod.io** ticked in Settings (on by default), Karl checks at startup whether any of your mods was deleted or hidden on mod.io. It tells you which ones and marks them with ⊘: Karl keeps the copy you have, but those mods won't get updates anymore.
+
+**Mod details.** Double-click a mod in My mods, or click a card in Browse: a window shows cover, author, stats, the game versions the mod is marked for, the full description, its images (click one to open it full size), the last versions with their changelog, and the mods it requires. Buttons open the mod.io page or copy the link, and **▲ / ▼** send your vote to mod.io with your account (click the same arrow again to remove it).
 
 **Required mods.** Karl reads from mod.io which other mods each mod needs (for example Mod Hub or DRGLib). If one is missing from the active folder or turned off, the mod shows ⚠ next to its name, selecting it tells you what is missing, and after **Add** Karl lists the missing ones with their links. It never installs anything on its own: you add them like any other mod.
 
@@ -138,6 +146,10 @@ The counters under the list show how many mods are installed, pending and waitin
 **Disk space.** **Settings → Disk space…** shows how much space mods in use, time machine snapshots, files no longer used, downloaded covers and previous versions take, and frees what you select. Deleting previous versions means **Previous version** won't work until the mods update again.
 
 **Automatic checks.** In **Settings → Maintenance** you can have Karl check for updates of all your mods, in every folder, at every startup, and have Karl check for new versions of itself (see below).
+
+**Diagnostics and log.** **Settings → Diagnostics…** checks the game folder, write permissions, the mods (missing files, load order, required mods, conflicts, removed mods), other mod loaders, blueprint mod support, Proton and the mod.io connection, and lists the latest warnings from the log. **Copy** or **Save…** the report and attach it to an issue (the token is hidden). **Open log** opens `karl.log` directly.
+
+**Notification area.** With **Show Karl in the notification area** ticked (on by default), Karl's icon sits next to the clock: double-click it to bring Karl to the front, or right-click for **Play**, **Play without mods**, the folder list and **Quit Karl**. Tick **Closing the window keeps Karl in the notification area** to hide the window instead of quitting when you close it. On Linux the icon needs a desktop with a system tray (KDE, Cinnamon, XFCE; GNOME needs the AppIndicator extension).
 
 **Updating Karl.** At the bottom right, next to the progress bar, there is a **GitHub ↗** link to this page. If **Show the Karl update icon** is ticked in **Settings → Maintenance**, the ⟳ update icon appears next to it. With **Check for new versions of Karl at every startup** also ticked, Karl checks GitHub each time it opens; untick it and Karl checks only when you click the icon. When a new version is out the icon becomes **⟳ !**. Click it and Karl updates itself: it downloads the new `Karl.exe` (or the Linux binary) from the latest release, replaces the old one and restarts. With no update pending, clicking ⟳ checks again right away. If you run Karl from the source code, the icon opens the releases page instead (update with `git pull`). Untick **Show the Karl update icon** to hide the icon and stop every check.
 
@@ -301,4 +313,4 @@ Karl is an unofficial fan project. It is not affiliated with, endorsed or sponso
 
 ## Logo
 
-The Karl logos were manually designed by Pietro Schena.
+The Karl logos were manually designed by Zoppone.

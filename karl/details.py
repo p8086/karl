@@ -125,6 +125,15 @@ class ModDetails(tk.Toplevel):
         self.state_lbl = tk.Label(info, bg=BG, fg=ACCENT, font=(FONT, 9, "bold"), anchor="w",
                                   justify="left", wraplength=420)
         self.state_lbl.pack(fill="x", pady=(4, 0))
+        votes = tk.Frame(info, bg=BG)
+        votes.pack(fill="x", pady=(8, 0))
+        self.my_rating = 0
+        self.up_btn = ttk.Button(votes, command=lambda: self.vote(1))
+        self.up_btn.pack(side="left")
+        self.down_btn = ttk.Button(votes, command=lambda: self.vote(-1))
+        self.down_btn.pack(side="left", padx=(6, 0))
+        self.vote_lbl = tk.Label(votes, bg=BG, fg=MUTED, font=(FONT, 9), anchor="w")
+        self.vote_lbl.pack(side="left", padx=(10, 0))
         btns = tk.Frame(info, bg=BG)
         btns.pack(fill="x", side="bottom")
         ttk.Button(btns, text=tr("details.open"), command=self.open_page).pack(side="left")
@@ -181,7 +190,11 @@ class ModDetails(tk.Toplevel):
             files = client.list_modfiles(game_id, mod_id)
             deps = ([dependency_info(d) for d in client.dependencies(game_id, mod_id)]
                     if mod.get("dependencies", True) else [])
-            return mod, files, deps
+            try:
+                mine = client.my_rating(game_id, mod_id)
+            except Exception:
+                mine = 0
+            return mod, files, deps, mine
 
         self.app.submit(work, self._loaded, self._failed)
 
@@ -192,7 +205,7 @@ class ModDetails(tk.Toplevel):
     def _loaded(self, res):
         if not self.winfo_exists():
             return
-        self.mod, self.files, self.deps = res
+        self.mod, self.files, self.deps, self.my_rating = res
         e = self.app.lib.mods.get(self.mod_id)
         if e is not None:
             e.deps = list(self.deps)
@@ -225,6 +238,7 @@ class ModDetails(tk.Toplevel):
         self.versions_lbl.configure(
             text=tr("details.game_versions", versions=", ".join(versions)) if versions else "")
         self.state_lbl.configure(text=self._library_state())
+        self._render_votes()
         logo = m.get("logo") or {}
         url = logo.get("thumb_640x360") or logo.get("thumb_320x180") or logo.get("original", "")
         thumbs = getattr(getattr(self.app, "browse", None), "thumbs", None)
@@ -237,6 +251,48 @@ class ModDetails(tk.Toplevel):
                                     "" if desc else "muted")])
         self._render_files()
         self._render_deps()
+
+    def _render_votes(self):
+        stats = self.mod.get("stats") or {}
+        up = int(stats.get("ratings_positive") or 0)
+        down = int(stats.get("ratings_negative") or 0)
+        self.up_btn.configure(text=f"▲ {up}", style="Accent.TButton" if self.my_rating == 1
+                              else "TButton")
+        self.down_btn.configure(text=f"▼ {down}", style="Accent.TButton" if self.my_rating == -1
+                                else "TButton")
+        if self.my_rating == 1:
+            text = tr("vote.liked")
+        elif self.my_rating == -1:
+            text = tr("vote.disliked")
+        else:
+            text = tr("vote.hint") if self.app.config_.logged_in else tr("details.login")
+        self.vote_lbl.configure(text=text)
+
+    def vote(self, value: int):
+        if not self.app.config_.logged_in:
+            self.app.open_login()
+            return
+        new = 0 if self.my_rating == value else value
+        old = self.my_rating
+        game_id, mod_id = self.game_id, self.mod_id
+
+        def done(_):
+            if not self.winfo_exists():
+                return
+            stats = dict(self.mod.get("stats") or {})
+            for v, key in ((1, "ratings_positive"), (-1, "ratings_negative")):
+                n = int(stats.get(key) or 0) - (old == v) + (new == v)
+                stats[key] = max(0, n)
+            self.mod["stats"] = stats
+            self.my_rating = new
+            self._render_votes()
+            self.app.set_status(tr("vote.saved") if new else tr("vote.removed"))
+
+        def fail(msg):
+            if self.winfo_exists():
+                self.app.show_error(tr("vote.failed", msg=msg))
+
+        self.app.submit(lambda: self.app.client().rate(game_id, mod_id, new), done, fail)
 
     def _library_state(self) -> str:
         lib = self.app.lib

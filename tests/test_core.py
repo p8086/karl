@@ -898,5 +898,83 @@ class ConflictAndUpdateTests(unittest.TestCase):
         with self.assertRaises(OSError):
             selfupdate.prepare(dict(rel, assets={}), exe, work, platform="linux")
 
+class BatchFourTests(unittest.TestCase):
+    def setUp(self):
+        self.paks = Path(tempfile.mkdtemp()) / "FSD" / "Content" / "Paks"
+        self.paks.mkdir(parents=True)
+        (self.paks / "FSD-WindowsNoEditor.pak").write_bytes(b"originale")
+        for f in (library.CONFIG_FILE, library.LIBRARY_FILE, library.FOLDERS_FILE,
+                  library.SNAPSHOTS_FILE):
+            if f.exists():
+                f.unlink()
+        FakeClient.version = {"file_id": 1, "v": "1.0"}
+        FakeClient.deps = {}
+        self.cfg = Config(token="t", paks_dir=str(self.paks))
+        self.lib = Library(self.cfg, client_factory=FakeClient)
+
+    def inst(self, slug):
+        return sorted(self.paks.glob(f"FSD-WindowsNoEditor_karl_{slug}_*_P.pak"))
+
+    def test_tags_size_dates(self):
+        e = self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertGreater(e.added_at, 0)
+        self.assertGreater(e.updated_at, 0)
+        self.assertEqual(self.lib.mod_size(e), len(b"PAK1.0"))
+        self.lib.set_tags([42], " HUD, #audio ,hud,, Da   provare ")
+        self.assertEqual(e.tags, ["HUD", "audio", "Da provare"])
+        self.assertEqual(self.lib.all_tags(), ["audio", "Da provare", "HUD"])
+        out = Path(tempfile.mkdtemp()) / "conf.karl"
+        self.lib.export_profile(out)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(data["mods"]["42"]["tags"], ["HUD", "audio", "Da provare"])
+        self.lib.set_tags([42], "")
+        self.assertEqual(e.tags, [])
+        self.lib.import_profile(out)
+        self.assertEqual(self.lib.mods[42].tags, ["HUD", "audio", "Da provare"])
+
+    def test_check_removed(self):
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        alive = [42]
+        FakeClient.mods_by_ids = lambda self, g, ids: [{"id": i} for i in ids if i in alive]
+        self.addCleanup(delattr, FakeClient, "mods_by_ids")
+        self.assertEqual(self.lib.check_removed(), [])
+        alive.clear()
+        self.assertEqual([e.mod_id for e in self.lib.check_removed()], [42])
+        self.assertTrue(self.lib.mods[42].removed)
+        self.assertEqual(self.lib.check_removed(), [])
+        alive.append(42)
+        self.lib.check_removed()
+        self.assertFalse(self.lib.mods[42].removed)
+
+    def test_vanilla(self):
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        self.assertEqual(len(self.inst("test-mod")), 1)
+        self.assertEqual(self.lib.start_vanilla(), 1)
+        self.assertEqual(self.inst("test-mod"), [])
+        self.assertTrue(Config.load().vanilla_active)
+        self.assertTrue(self.lib.mods[42].enabled)
+        self.lib.end_vanilla()
+        self.assertEqual(len(self.inst("test-mod")), 1)
+        self.assertFalse(Config.load().vanilla_active)
+
+    def test_diagnostics(self):
+        from karl import diagnostics
+        self.lib.add("https://mod.io/g/drg/m/test-mod", MODE_LOCAL)
+        FakeClient.me = lambda self: {"username": "pe8086"}
+        self.addCleanup(delattr, FakeClient, "me")
+        items = diagnostics.run(self.lib)
+        text = diagnostics.format_report(items)
+        self.assertIn("[ OK ] Paks folder", text)
+        self.assertIn("All mods turned on are in the game", text)
+        self.assertIn("signed in as pe8086", text)
+        self.assertNotIn("t\n", "")
+        for p in self.inst("test-mod"):
+            p.unlink()
+        text = diagnostics.format_report(diagnostics.run(self.lib, network=False))
+        self.assertIn("[FAIL] Mods on but not in the game", text)
+        self.cfg.paks_dir = ""
+        text = diagnostics.format_report(diagnostics.run(self.lib, network=False))
+        self.assertIn("[FAIL] Paks folder: not set", text)
+
 if __name__ == "__main__":
     unittest.main()

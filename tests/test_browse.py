@@ -119,8 +119,17 @@ class FakeModio:
         return [{"id": 900 + mid, "version": "2.0", "date_added": 1700000000, "filesize": 1024,
                  "changelog": "<p>Fixed <b>things</b></p>"}]
 
+    gone: set = set()
+    votes: dict = {}
+
     def mods_by_ids(self, gid, ids):
-        return [m for m in FakeModio.mods if m["id"] in ids]
+        return [m for m in FakeModio.mods if m["id"] in ids and m["id"] not in FakeModio.gone]
+
+    def rate(self, gid, mid, rating):
+        FakeModio.votes[mid] = rating
+
+    def my_rating(self, gid, mid):
+        return FakeModio.votes.get(mid, 0)
 
     def download(self, url, dest, progress=None, md5=""):
         import zipfile
@@ -635,7 +644,7 @@ class LocalFileTests(GuiBase):
         self.assertIn("Mod 20", names)
         self.assertTrue(self.installed("file-miamod").exists())
         file_row = next(r for i, r in mine.tree._rows.items() if r[0] == "MiaMod")
-        self.assertEqual(file_row[2], "file .pak")
+        self.assertEqual(file_row[3], "file .pak")
         fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames = \
             lambda **k: (str(src / "Altra.pak"),)
         gui.filedialog.askopenfilenames = fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames
@@ -1104,10 +1113,10 @@ class QualityTests(GuiBase):
         lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
         lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
         mine.refresh()
-        self.assertEqual(mine.tree._rows["30"][3], "☆")
-        mine.tree.click("30", column="#4")
+        self.assertEqual(mine.tree._rows["30"][4], "☆")
+        mine.tree.click("30", column="#5")
         self.assertTrue(lib.mods[30].favorite)
-        self.assertEqual(mine.tree._rows["30"][3], "★")
+        self.assertEqual(mine.tree._rows["30"][4], "★")
         self.assertEqual(mine.wanted, {})
         mine.show_var.set(mine.show_choices[1])
         mine.refresh()
@@ -1414,6 +1423,250 @@ class ShortcutCompactUpdateTests(GuiBase):
         dlg.karl_updates.set(False)
         dlg._sync_karl_startup()
         self.assertEqual(dlg.karl_startup_check.kw.get("state"), "disabled")
+
+class FakeTrayModule:
+    def __init__(self):
+        import threading
+        self.icons = []
+        mod = self
+
+        class Menu:
+            SEPARATOR = "---"
+
+            def __init__(self, *items):
+                self.items = items
+
+            def resolve(self):
+                if len(self.items) == 1 and callable(self.items[0]):
+                    return list(self.items[0]())
+                return list(self.items)
+
+        class MenuItem:
+            def __init__(self, text, action, checked=None, radio=False, default=False):
+                self.text, self.action, self.checked, self.default = text, action, checked, default
+
+        class Icon:
+            def __init__(self, name, image, title, menu):
+                self.menu, self.stopped = menu, threading.Event()
+                self.updates = 0
+                mod.icons.append(self)
+
+            def run(self):
+                self.stopped.wait(5)
+
+            def stop(self):
+                self.stopped.set()
+
+            def update_menu(self):
+                self.updates += 1
+
+        self.Menu, self.MenuItem, self.Icon = Menu, MenuItem, Icon
+
+
+class BatchFourGuiTests(GuiBase):
+    def make_app(self, **cfg):
+        FakeModio.subs = set()
+        FakeModio.deps = {}
+        FakeModio.gone = set()
+        FakeModio.votes = {}
+        Config(token=FakeModio.valid_token, username="pe8086", avatar_url="a", profile_url="p",
+               ignore_modio_subs=True, **cfg).save()
+        app = gui.App()
+        self.addCleanup(app.pool.shutdown, wait=True)
+        pump(app, 80)
+        return app
+
+    def messages(self):
+        return fake_tk.sys.modules["tkinter.messagebox"].messages
+
+    def test_play_without_mods(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        self.assertTrue(self.installed("mod-30").exists())
+        state = {"running": False, "launched": 0}
+        saved = (gui.game.is_running, gui.game.launch)
+        self.addCleanup(lambda: (setattr(gui.game, "is_running", saved[0]),
+                                 setattr(gui.game, "launch", saved[1])))
+        gui.game.is_running = lambda: state["running"]
+        gui.game.launch = lambda: state.__setitem__("launched", state["launched"] + 1)
+        self.assertEqual(app.vanilla_btn.kw["text"], "Gioca senza mod")
+        mine.play_vanilla()
+        pump(app)
+        self.assertEqual(state["launched"], 1)
+        self.assertFalse(self.installed("mod-30").exists())
+        self.assertTrue(app.config_.vanilla_active)
+        self.assertIn("senza mod", app.status.get())
+        mine._vanilla_tick()
+        pump(app)
+        self.assertTrue(app.config_.vanilla_active)
+        state["running"] = True
+        mine._vanilla_tick()
+        pump(app)
+        self.assertTrue(mine._vanilla_seen)
+        state["running"] = False
+        mine._vanilla_tick()
+        pump(app, 80)
+        self.assertFalse(app.config_.vanilla_active)
+        self.assertTrue(self.installed("mod-30").exists())
+        self.assertIn("di nuovo nel gioco", app.status.get())
+
+        lib.start_vanilla()
+        app2 = gui.App()
+        self.addCleanup(app2.pool.shutdown, wait=True)
+        pump(app2, 80)
+        app2.mine.resume_vanilla()
+        pump(app2, 80)
+        self.assertFalse(app2.config_.vanilla_active)
+        self.assertTrue(self.installed("mod-30").exists())
+
+    def test_tags_sort_and_size(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        for i in (30, 31, 32):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}", MODE_LOCAL)
+        lib.mods[31].added_at += 100
+        mine.refresh()
+        self.assertEqual(mine.tree._rows["30"][2], "3 B")
+        mine.tree.selection_set(["30", "32"])
+        sd = fake_tk.sys.modules["tkinter.simpledialog"]
+        sd.answers[:] = ["HUD, Audio"]
+        mine.edit_tags()
+        self.assertEqual(lib.mods[32].tags, ["HUD", "Audio"])
+        self.assertIn("Tag: HUD", mine.show_choices)
+        self.assertTrue(mine.tree._rows["30"][0].endswith("[HUD, Audio]"))
+        mine.show_var.set("Tag: HUD")
+        mine.refresh()
+        self.assertEqual(sorted(mine.tree.get_children()), ["30", "32"])
+        mine._move_selected(1)
+        self.assertIn("ordine", app.status.get())
+        mine.show_var.set(mine.show_choices[0])
+        mine.search_var.set("audio")
+        self.assertEqual(sorted(mine.tree.get_children()), ["30", "32"])
+        mine.search_var.set("")
+        mine.sort_var.set(mine.sort_labels[mine.sort_keys.index("added")])
+        mine.refresh()
+        self.assertEqual(mine.tree.get_children()[0], "31")
+        self.assertTrue(mine.filtered())
+        mine.sort_var.set(mine.sort_labels[mine.sort_keys.index("name")])
+        mine.refresh()
+        self.assertEqual(mine.tree.get_children(), ["30", "31", "32"])
+        mine.sort_var.set(mine.sort_labels[0])
+        self.assertFalse(mine.filtered())
+        mine.tree.selection_set(["30", "32"])
+        sd.answers[:] = [""]
+        mine.edit_tags()
+        self.assertEqual(mine.show_choices, [mine.show_choices[0], mine.show_choices[1]])
+
+    def test_drop_files_and_links(self):
+        app = self.make_app()
+        self.assertFalse(app.dnd)
+        src = Path(tempfile.mkdtemp())
+        pak = src / "Mia Mod.pak"
+        pak.write_bytes(b"PAK")
+        added = []
+        app.mine.add_mod = lambda: added.append(app.mine.links_text())
+        n = app.handle_drop("{" + str(pak) + "} https://mod.io/g/drg/m/mod-40 " + str(src / "x.txt"))
+        self.assertEqual(n, 2)
+        self.assertIn(str(pak), added[0])
+        self.assertIn("https://mod.io/g/drg/m/mod-40", added[0])
+        self.assertEqual(app.handle_drop("ciao"), 0)
+        self.assertIn("Niente da aggiungere", app.status.get())
+
+    def test_removed_mods_warning(self):
+        app = self.make_app()
+        lib = app.lib
+        lib.add("https://mod.io/g/drg/m/mod-30", MODE_LOCAL)
+        lib.add("https://mod.io/g/drg/m/mod-31", MODE_LOCAL)
+        FakeModio.gone = {31}
+        self.messages().clear()
+        app.check_removed_mods()
+        pump(app)
+        warns = [m for m in self.messages() if m[0] == "warn"]
+        self.assertEqual(len(warns), 1)
+        self.assertIn("Mod 31", warns[0][2])
+        self.assertNotIn("Mod 30", warns[0][2])
+        self.assertIn(" ⊘", app.mine.tree._rows["31"][0])
+        app.check_removed_mods()
+        pump(app)
+        self.assertEqual(len([m for m in self.messages() if m[0] == "warn"]), 1)
+        app.config_.warn_removed = False
+        FakeModio.gone = {30, 31}
+        app.check_removed_mods()
+        pump(app)
+        self.assertFalse(lib.mods[30].removed)
+
+    def test_vote_from_details(self):
+        app = self.make_app()
+        FakeModio.mods[29]["stats"]["ratings_positive"] = 10
+        self.addCleanup(lambda: FakeModio.mods[29]["stats"].pop("ratings_positive", None))
+        app.open_details(2475, 30, FakeModio.mods[29])
+        pump(app)
+        d = app._details
+        self.assertEqual(d.up_btn.kw["text"], "▲ 10")
+        d.vote(1)
+        pump(app)
+        self.assertEqual(FakeModio.votes[30], 1)
+        self.assertEqual(d.up_btn.kw["text"], "▲ 11")
+        self.assertEqual(d.up_btn.kw["style"], "Accent.TButton")
+        d.vote(-1)
+        pump(app)
+        self.assertEqual(FakeModio.votes[30], -1)
+        self.assertEqual(d.up_btn.kw["text"], "▲ 10")
+        self.assertEqual(d.down_btn.kw["text"], "▼ 1")
+        d.vote(-1)
+        pump(app)
+        self.assertEqual(FakeModio.votes[30], 0)
+        self.assertEqual(d.down_btn.kw["text"], "▼ 0")
+
+    def test_diagnostics_and_log(self):
+        app = self.make_app()
+        FakeModio.me_calls = 0
+        dlg = gui.DiagnosticsDialog(app)
+        pump(app)
+        self.assertIn("[ OK ] Paks folder", dlg.report)
+        self.assertNotIn(FakeModio.valid_token, dlg.report)
+        dlg.copy()
+        self.assertEqual(fake_tk.Widget.clipboard, dlg.report)
+        opened = []
+        saved = gui.open_path
+        gui.open_path = opened.append
+        self.addCleanup(setattr, gui, "open_path", saved)
+        gui.karl_log.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        gui.karl_log.LOG_FILE.touch()
+        app.open_log()
+        self.assertEqual(opened, [gui.karl_log.LOG_FILE])
+
+    def test_tray(self):
+        fake = FakeTrayModule()
+        sys.modules["pystray"] = fake
+        self.addCleanup(sys.modules.pop, "pystray", None)
+        app = self.make_app(close_to_tray=True)
+        self.assertTrue(app.tray.running)
+        icon = fake.icons[-1]
+        calls = []
+        app.mine.play_vanilla = lambda: calls.append("vanilla")
+        items = icon.menu.resolve()
+        texts = [getattr(i, "text", i) for i in items]
+        self.assertEqual(texts[:3], ["Mostra Karl", "▶ Gioca", "Gioca senza mod"])
+        self.assertTrue(items[0].default)
+        sub = items[3].action.resolve()
+        self.assertEqual([m.text for m in sub], list(app.lib.folders))
+        self.assertTrue(sub[0].checked(sub[0]))
+        items[2].action(icon, items[2])
+        pump(app)
+        self.assertEqual(calls, ["vanilla"])
+        app.on_close()
+        self.assertFalse(app.destroyed)
+        items[-1].action(icon, items[-1])
+        pump(app)
+        self.assertTrue(app.destroyed)
+        self.assertTrue(icon.stopped.is_set())
+        self.assertFalse(app.tray.running)
+
+    def test_vanilla_button_next_to_play(self):
+        app = self.make_app()
+        self.assertIs(app.vanilla_btn.master, app.play_btn.master)
 
 if __name__ == "__main__":
     unittest.main()

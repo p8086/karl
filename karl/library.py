@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import struct
+import time
 import zipfile
 import zlib
 from datetime import datetime
@@ -105,6 +106,10 @@ class Config:
     auto_check_updates: bool = False
     check_karl_updates: bool = True
     karl_check_startup: bool = True
+    warn_removed: bool = True
+    vanilla_active: bool = False
+    tray_icon: bool = True
+    close_to_tray: bool = False
     game_build: str = ""
     compact_links: bool = False
 
@@ -205,6 +210,10 @@ class ModEntry:
     note: str = ""
     deps: Optional[list] = None
     game_versions: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    removed: bool = False
+    added_at: float = 0.0
+    updated_at: float = 0.0
 
     @property
     def has_update(self) -> bool:
@@ -538,6 +547,7 @@ class Library:
         entry.cached_paks = [str(p) for p in paks]
         entry.file_id = info["file_id"]
         entry.version = info["version"]
+        entry.updated_at = float(info.get("date") or time.time())
 
     def add(self, url: str, mode: Optional[str] = None,
             progress: Optional[Callable[[int, int], None]] = None,
@@ -566,7 +576,7 @@ class Library:
 
         entry = ModEntry(mod_id=mod_id, game_id=game_id, name=mod.get("name", slug),
                          slug=slug, url=mod.get("profile_url") or "", mode=mode,
-                         approval=approval_of(mod))
+                         approval=approval_of(mod), added_at=time.time())
         self._remember_meta(entry, mod, self.client)
         log(tr("lib.downloading"))
         self._download(entry, mod, progress)
@@ -599,7 +609,7 @@ class Library:
         if entry is None:
             new_id = min([m.mod_id for m in self.mods.values() if m.mod_id < 0], default=0) - 1
             entry = ModEntry(mod_id=new_id, game_id=0, name=stem, slug=slug, url="",
-                             mode=MODE_LOCAL, source=SOURCE_FILE)
+                             mode=MODE_LOCAL, source=SOURCE_FILE, added_at=time.time())
         self._import_file(entry, src)
         entry.enabled = True
         self._copy_to_game(entry)
@@ -615,6 +625,7 @@ class Library:
         entry.cached_paks = [str(p) for p in paks]
         entry.file_path = str(src.resolve())
         entry.file_mtime = src.stat().st_mtime
+        entry.updated_at = entry.file_mtime
         entry.version = datetime.fromtimestamp(entry.file_mtime).strftime("%Y-%m-%d %H:%M")
 
     def _keep_previous(self, entry: ModEntry) -> None:
@@ -757,6 +768,77 @@ class Library:
         self._save_list()
         return value
 
+    @staticmethod
+    def _clean_tags(tags) -> list[str]:
+        out: list[str] = []
+        for t in tags:
+            t = " ".join(str(t).replace("#", " ").split())[:30]
+            if t and t.lower() not in {x.lower() for x in out}:
+                out.append(t)
+        return out
+
+    def set_tags(self, ids: list[int], text: str) -> None:
+        tags = self._clean_tags(text.split(","))
+        for i in ids:
+            if i in self.mods:
+                self.mods[i].tags = list(tags)
+        self._save_list()
+
+    def all_tags(self) -> list[str]:
+        seen: dict[str, str] = {}
+        for e in self.mods.values():
+            for t in e.tags:
+                seen.setdefault(t.lower(), t)
+        return sorted(seen.values(), key=str.lower)
+
+    def mod_size(self, e: ModEntry) -> int:
+        total = 0
+        for p in e.cached_paks:
+            try:
+                total += Path(p).stat().st_size
+            except OSError:
+                pass
+        return total
+
+    def check_removed(self) -> list[ModEntry]:
+        by_game: dict[int, list[int]] = {}
+        for e in self.mods.values():
+            if e.source == SOURCE_MODIO and e.game_id:
+                by_game.setdefault(e.game_id, []).append(e.mod_id)
+        if not by_game:
+            return []
+        client = self.client
+        alive: set[int] = set()
+        for gid, ids in by_game.items():
+            alive |= {int(m["id"]) for m in client.mods_by_ids(gid, ids)}
+        newly = []
+        for ids in by_game.values():
+            for i in ids:
+                e = self.mods[i]
+                gone = i not in alive
+                if gone and not e.removed:
+                    newly.append(e)
+                e.removed = gone
+        self._save_list()
+        return sorted(newly, key=lambda e: e.name.lower())
+
+    def start_vanilla(self) -> int:
+        n = 0
+        for e in self.mods.values():
+            if e.installed_paks:
+                self._remove_from_game(e)
+                n += 1
+        self.config.vanilla_active = True
+        self.config.save()
+        self.save()
+        return n
+
+    def end_vanilla(self, progress: Optional[Callable[[int, int], None]] = None,
+                    log: Callable[[str], None] = lambda s: None) -> dict:
+        self.config.vanilla_active = False
+        self.config.save()
+        return self.update_all(progress=progress, log=log)
+
     def set_note(self, mod_id: int, text: str) -> None:
         self.mods[mod_id].note = " ".join((text or "").split())
         self._save_list()
@@ -772,7 +854,7 @@ class Library:
                 continue
             mods[str(i)] = {"game_id": e.game_id, "slug": e.slug, "name": e.name,
                             "file_id": e.file_id, "hold": e.hold,
-                            "favorite": e.favorite, "note": e.note}
+                            "favorite": e.favorite, "note": e.note, "tags": e.tags}
         folders = [{"name": n, "mods": [[i, on] for i, on in f.items()
                                         if i in self.mods and i not in skipped]}
                    for n, f in self.folders.items()]
@@ -825,6 +907,8 @@ class Library:
                 e.favorite = e.favorite or bool(info.get("favorite"))
                 if info.get("note"):
                     e.note = str(info["note"])
+                if info.get("tags"):
+                    e.tags = self._clean_tags(e.tags + [str(t) for t in info["tags"]])
             except Exception:
                 failed.append(name)
         self.folders = {n: {i: on for i, on in f.items() if i in self.mods}

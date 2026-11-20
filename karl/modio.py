@@ -164,6 +164,16 @@ class ModioClient:
             out.extend(page)
         return out
 
+    def rate(self, game_id: int, mod_id: int, rating: int) -> None:
+        self._json("POST", f"/games/{game_id}/mods/{mod_id}/ratings", data={"rating": rating})
+
+    def my_rating(self, game_id: int, mod_id: int) -> int:
+        res = self._json("GET", "/me/ratings", {"game_id": game_id, "mod_id": mod_id})
+        for r in res.get("data", []):
+            if int(r.get("mod_id", 0)) == int(mod_id):
+                return int(r.get("rating") or 0)
+        return 0
+
     def me(self) -> dict:
         return self._json("GET", "/me")
 
@@ -270,6 +280,7 @@ def modfile_info(mod: dict) -> dict:
         "url": dl["binary_url"],
         "size": mf.get("filesize") or 0,
         "md5": (mf.get("filehash") or {}).get("md5") or "",
+        "date": mf.get("date_added") or 0,
     }
 
 
