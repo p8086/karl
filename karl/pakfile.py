@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import struct
 from pathlib import Path
@@ -147,7 +148,6 @@ def _replace_name(buf: bytearray, rel: str) -> int:
 
 
 def hide_asset_registry(path: Path) -> bool:
-    import hashlib
     with open(path, "r+b") as f:
         ver, encrypted, off, isz, magic_pos = _footer_at(f)
         if encrypted:

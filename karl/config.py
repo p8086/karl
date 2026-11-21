@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -35,6 +36,7 @@ class Config:
     close_to_tray: bool = False
     game_build: str = ""
     compact_links: bool = False
+    compact_list: bool = False
     ui_scale: float = 1.0
     crash_watch: bool = True
     show_whats_new: bool = True
@@ -103,13 +105,11 @@ class Config:
         self.game_build = target.get("game_build", "")
         self.save()
 
-    def add_install(self, name: str, paks_dir: str = "") -> str:
-        import uuid
-        self.ensure_installs()
-        install_id = uuid.uuid4().hex[:10]
-        self.installs.append({"id": install_id, "name": name.strip() or install_id,
-                              "paks_dir": paks_dir, "game_build": ""})
-        return install_id
+
+def new_install(name: str, paks_dir: str = "") -> dict:
+    install_id = uuid.uuid4().hex[:10]
+    return {"id": install_id, "name": name.strip()[:40] or install_id, "paks_dir": paks_dir,
+            "game_build": ""}
 
 
 def steam_roots() -> list[Path]:

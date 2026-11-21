@@ -10,7 +10,7 @@ from . import game, paths
 from .entry import ModEntry, SOURCE_FILE, SOURCE_MODIO, approval_of
 from .i18n import tr
 from .modio import (DEFAULT_GAME, KNOWN_GAMES, ModioClient, ModioError, dependency_info,
-                    game_versions_of, mod_name, version_key)
+                    game_versions_of, mod_name, modfile_info, version_key)
 
 
 class UpdatesMixin:
@@ -34,10 +34,42 @@ class UpdatesMixin:
         e = self.mods.get(mod_id)
         return bool(e and e.prev_paks and all(Path(p).is_file() for p in e.prev_paks))
 
-    def rollback(self, mod_id: int, log: Callable[[str], None] = lambda s: None) -> ModEntry:
-        if not self.has_previous(mod_id):
+    def can_rollback(self, mod_id: int) -> bool:
+        e = self.mods.get(mod_id)
+        return bool(e) and (self.has_previous(mod_id)
+                            or (e.source != SOURCE_FILE and bool(self.config.token)))
+
+    def previous_modfile(self, e: ModEntry) -> Optional[dict]:
+        files = self.client.list_modfiles(e.game_id, e.mod_id, limit=20)
+        ids = [f.get("id") for f in files]
+        start = ids.index(e.file_id) + 1 if e.file_id in ids else 0
+        for f in files[start:]:
+            if f.get("id") != e.file_id and (f.get("download") or {}).get("binary_url"):
+                return f
+        return None
+
+    def _fetch_previous(self, e: ModEntry,
+                        progress: Optional[Callable[[int, int], None]]) -> None:
+        mf = self.previous_modfile(e) if e.source != SOURCE_FILE and self.config.token else None
+        if mf is None:
             raise ModioError(tr("rollback.none"))
-        e = self.mods[mod_id]
+        info = modfile_info({"modfile": mf, "name_id": e.slug})
+        mod_cache = paths.MODS_CACHE / str(e.mod_id)
+        archive = self.client.download(info["url"], mod_cache / "download" / info["filename"],
+                                       progress, md5=info.get("md5", ""))
+        e.prev_paks = [str(p) for p in self.extract_paks(archive, mod_cache / "prev")]
+        archive.unlink(missing_ok=True)
+        e.prev_version = info["version"]
+        e.prev_file_id = info["file_id"]
+        e.prev_file_mtime = 0.0
+
+    def rollback(self, mod_id: int, log: Callable[[str], None] = lambda s: None,
+                 progress: Optional[Callable[[int, int], None]] = None) -> ModEntry:
+        e = self.mods.get(mod_id)
+        if e is None:
+            raise ModioError(tr("rollback.none"))
+        if not self.has_previous(mod_id):
+            self._fetch_previous(e, progress)
         mod_cache = paths.MODS_CACHE / str(mod_id)
         cur_dir, prev_dir, tmp = mod_cache / "paks", mod_cache / "prev", mod_cache / "swap"
         shutil.rmtree(tmp, ignore_errors=True)

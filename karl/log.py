@@ -4,17 +4,21 @@ import logging
 import logging.handlers
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from . import APP_NAME
+from . import APP_NAME, VERSION
 
 LOG_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / APP_NAME / "karl.log"
 log = logging.getLogger(APP_NAME)
+session_start = ""
 
 
 def setup() -> Path:
+    global session_start
     if log.handlers:
         return LOG_FILE
+    session_start = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
     log.setLevel(logging.INFO)
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -31,4 +35,5 @@ def setup() -> Path:
         previous(kind, value, tb)
 
     sys.excepthook = hook
+    log.info("Karl %s", VERSION)
     return LOG_FILE

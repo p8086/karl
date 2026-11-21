@@ -16,10 +16,12 @@ from .config import Config
 from .entry import ENTRY_KEYS, GAME_PAK_PREFIX, MOD_FILE_EXT, ModEntry, SOURCE_FILE, approval_of
 from .folders import FoldersMixin
 from .gamefiles import GameFilesMixin
+from .history import History
 from .i18n import tr
 from .modio import ModioClient, ModioError, mod_name, modfile_info, parse_mod_url
 from .pakfile import PakError, hide_asset_registry
 from .paths import MAIN_INSTALL, use_install
+from .timemachine import TimeMachine
 from .updates import UpdatesMixin
 
 
@@ -33,9 +35,7 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         self.active_folder: str = ""
         self._changes: list[dict] = []
         self.load()
-        from .history import History
         self.history = History(paths.HISTORY_FILE)
-        from .timemachine import TimeMachine
         self.time_machine = TimeMachine(self, paths.SNAPSHOTS_FILE, paths.SNAPSHOT_BLOBS)
 
     def load(self) -> None:
@@ -123,6 +123,18 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         self.save()
         if changed:
             self.log_event("order")
+
+    def position(self, mod_id: int) -> int:
+        order = list(self.folders.get(self.active_folder, {}))
+        return order.index(mod_id) + 1 if mod_id in order else 0
+
+    def move_to(self, mod_id: int, pos: int) -> None:
+        ids = list(self.folders.get(self.active_folder, {}))
+        if mod_id not in ids:
+            return
+        ids.remove(mod_id)
+        ids.insert(max(0, min(len(ids), pos - 1)), mod_id)
+        self.set_order(ids)
 
     def needs_reorder(self, e: ModEntry) -> bool:
         return bool(e.enabled and e.installed_paks and e.installed_paks != self._pak_names(e))
@@ -292,11 +304,13 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
                 out.append(t)
         return out
 
-    def set_tags(self, ids: list[int], text: str) -> None:
-        tags = self._clean_tags(text.split(","))
+    def update_tags(self, ids: list[int], add: list[str], remove: list[str]) -> None:
+        gone = {t.lower() for t in remove}
         for i in ids:
-            if i in self.mods:
-                self.mods[i].tags = list(tags)
+            e = self.mods.get(i)
+            if e is not None:
+                kept = [t for t in e.tags if t.lower() not in gone]
+                e.tags = self._clean_tags(kept + list(add))
         self._save_list()
 
     def all_tags(self) -> list[str]:

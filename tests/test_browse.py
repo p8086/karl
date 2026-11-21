@@ -290,19 +290,19 @@ class GuiTests(GuiBase):
 
         b.sidebar.vars["Type"]["QoL"].set(True)
         b.sidebar.radio["Approval Category"].set("Verified")
-        b.sort.set_key("subscribers")
+        b.sort.var.set(b.sort.label("subscribers"))
         b.new_query()
         pump(app)
         last = [c for c in FakeModio.calls if c[0] == "list"][-1][1]
         self.assertEqual(last["tags"], "Verified,QoL")
         self.assertEqual(last["_sort"], "-subscribers_total")
         self.assertEqual(last["_offset"], 0)
-        b.library.set_key(LIB_SUB)
+        b.library.var.set(b.library.label(LIB_SUB))
         b.new_query()
         pump(app)
         self.assertEqual([c for c in FakeModio.calls if c[0] == "list"][-1][1]["id-in"], "1")
 
-        b.library.set_key(LIB_ALL)
+        b.library.var.set(b.library.label(LIB_ALL))
         b.sidebar.clear()
         b.new_query()
         pump(app)
@@ -580,6 +580,7 @@ class NewFeaturesTests(GuiBase):
 
         mine.tree._sel = ("30",)
         mine.rollback()
+        pump(app, 80)
         msgs = fake_tk.sys.modules["tkinter.messagebox"].messages
         self.assertTrue(any(m[0] == "error" for m in msgs))
         mod = next(m for m in FakeModio.mods if m["id"] == 30)
@@ -596,7 +597,7 @@ class NewFeaturesTests(GuiBase):
         mine.rollback()
         pump(app, 80)
         self.assertEqual(lib.mods[30].version, old_ver)
-        self.assertIn("🔒", mine.tree._rows["30"][1])
+        self.assertIn("🔒", mine.tree._rows["30"][2])
 
         src = Path(tempfile.mkdtemp()) / "MiaMod.pak"
         src.write_bytes(b"v1")
@@ -636,7 +637,7 @@ class UpdateCheckTests(GuiBase):
         pump(app, 80)
         self.assertEqual(lib.mods[30].latest_version, "9.9")
         self.assertEqual(lib.mods[30].file_id, old_file)
-        self.assertIn("→ 9.9", mine.tree._rows["30"][1])
+        self.assertIn("→ 9.9", mine.tree._rows["30"][2])
         self.assertEqual(mine.counts()["updates"], 1)
         self.assertEqual(mine.count_lbls["updates"].kw["text"], "1")
         self.assertIn("1", app.status.get())
@@ -644,7 +645,7 @@ class UpdateCheckTests(GuiBase):
         pump(app, 80)
         self.assertEqual(lib.mods[30].file_id, old_file + 1000)
         self.assertEqual(lib.mods[30].latest_version, "")
-        self.assertNotIn("→", mine.tree._rows["30"][1])
+        self.assertNotIn("→", mine.tree._rows["30"][2])
         app.pool.shutdown(wait=True)
 
 
@@ -667,8 +668,8 @@ class LocalFileTests(GuiBase):
         self.assertIn("MiaMod", names)
         self.assertIn("Mod 20", names)
         self.assertTrue(self.installed("file-miamod").exists())
-        file_row = next(r for i, r in mine.tree._rows.items() if r[0] == "MiaMod")
-        self.assertEqual(file_row[3], "file .pak")
+        file_row = next(r for i, r in mine.tree._rows.items() if r[1] == "MiaMod")
+        self.assertEqual(file_row[5], "file .pak")
         fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames = \
             lambda **k: (str(src / "Altra.pak"),)
         gui.mine.filedialog.askopenfilenames = fake_tk.sys.modules["tkinter.filedialog"].askopenfilenames
@@ -978,7 +979,7 @@ class LanguageTests(GuiBase):
         old_browse = app.browse
         app.browse.cards[0].copy_link()
         dlg = gui.settings.SettingsDialog(app)
-        dlg.language.set_key("en")
+        dlg.language.var.set(dlg.language.label("en"))
         dlg.save()
         pump(app, 80)
         self.assertEqual(app.mine.links.buf.strip(), "https://mod.io/g/drg/m/mod-1")
@@ -992,7 +993,7 @@ class LanguageTests(GuiBase):
         self.assertEqual(app.browse.cards[0].copy_btn.kw["text"], "🔗 Copy link")
         self.assertEqual(app.browse.sort.key, "trending")
         self.assertEqual(app.status.get(), "Settings saved.")
-        app.browse.sort.set_key("alpha")
+        app.browse.sort.var.set(app.browse.sort.label("alpha"))
         self.assertEqual(app.browse.sort.var.get(), "Alphabetical")
         self.assertEqual(app.browse.sort.key, "alpha")
         gui.settings.SettingsDialog(app).save()
@@ -1113,10 +1114,10 @@ class QualityTests(GuiBase):
         lib.add("https://mod.io/g/drg/m/mod-30")
         lib.add("https://mod.io/g/drg/m/mod-31")
         mine.refresh()
-        self.assertEqual(mine.tree._rows["30"][4], "☆")
-        mine.tree.click("30", column="#5")
+        self.assertEqual(mine.tree._rows["30"][6], "☆")
+        mine.tree.click("30", column="#7")
         self.assertTrue(lib.mods[30].favorite)
-        self.assertEqual(mine.tree._rows["30"][4], "★")
+        self.assertEqual(mine.tree._rows["30"][6], "★")
         self.assertEqual(mine.wanted, {})
         mine.show_var.set(mine.show_choices[1])
         mine.refresh()
@@ -1131,7 +1132,7 @@ class QualityTests(GuiBase):
         sd.answers[:] = ["solo con amici"]
         mine.edit_note()
         self.assertEqual(lib.mods[30].note, "solo con amici")
-        self.assertTrue(mine.tree._rows["30"][0].endswith(" ✎"))
+        self.assertTrue(mine.tree._rows["30"][1].endswith(" ✎"))
         self.assertIn("solo con amici", app.status.get())
 
         fd = fake_tk.sys.modules["tkinter.filedialog"]
@@ -1224,12 +1225,110 @@ class FeatureTests(GuiBase):
         mine.search_var.set("")
         self.assertEqual(sorted(mine.tree.get_children()), ["30", "31", "32"])
 
+    def test_delete_tag_and_select_all(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        for i in (30, 31, 32):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
+        lib.update_tags([30, 31], ["HUD", "Audio"], [])
+        mine.update_show_choices()
+        mine.refresh()
+        self.assertEqual(mine.select_all(None), "break")
+        self.assertEqual(sorted(mine.selected_ids()), [30, 31, 32])
+        mine.tree.selection_set(["32"])
+        mine.edit_tags()
+        dlg = mine.tags_dialog
+        asked = []
+        old = gui.dialogs.messagebox.askyesno
+        self.addCleanup(setattr, gui.dialogs.messagebox, "askyesno", old)
+        gui.dialogs.messagebox.askyesno = lambda *a, **k: asked.append(a[1]) or False
+        dlg.delete_tag("hud")
+        self.assertEqual(lib.mods[30].tags, ["HUD", "Audio"])
+        gui.dialogs.messagebox.askyesno = lambda *a, **k: asked.append(a[1]) or True
+        dlg.delete_tag("HUD")
+        self.assertEqual(len(asked), 2)
+        self.assertIn("2", asked[-1])
+        self.assertEqual([lib.mods[i].tags for i in (30, 31, 32)], [["Audio"], ["Audio"], []])
+        self.assertNotIn("HUD", dlg.vars)
+        self.assertNotIn(gui.app.tr("mine.show_tag", tag="HUD"), mine.show_choices)
+        self.assertEqual(mine.tree._rows["30"][4], "Audio")
+        dlg.new_var.set("Nuovo")
+        dlg.add_new()
+        dlg.delete_tag("Nuovo")
+        self.assertEqual(len(asked), 2)
+        dlg.save()
+        self.assertEqual(lib.mods[32].tags, [])
+
+    def test_wheel_released_when_scrollframe_closes(self):
+        app = self.make_app()
+        first = browse.ScrollFrame(app, bg="black")
+        second = browse.ScrollFrame(app, bg="black")
+        first._bind_wheel()
+        self.assertIs(browse.ScrollFrame.wheel_owner, first)
+        second.bindings["<Destroy>"](types.SimpleNamespace(widget=second))
+        self.assertIs(browse.ScrollFrame.wheel_owner, first)
+        first.bindings["<Destroy>"](types.SimpleNamespace(widget=first.canvas))
+        self.assertIs(browse.ScrollFrame.wheel_owner, first)
+        first.bindings["<Destroy>"](types.SimpleNamespace(widget=first))
+        self.assertIsNone(browse.ScrollFrame.wheel_owner)
+
+    def test_settings_enter_saves_escape_closes(self):
+        app = self.make_app()
+        dlg = gui.settings.SettingsDialog(app)
+        dlg.compact_list.set(True)
+        self.assertEqual(dlg.bindings["<Return>"](None), "break")
+        self.assertTrue(dlg.destroyed)
+        self.assertTrue(Config.load().compact_list)
+        dlg = gui.settings.SettingsDialog(app)
+        dlg.compact_list.set(False)
+        dlg.bindings["<Escape>"](None)
+        self.assertTrue(dlg.destroyed)
+        self.assertTrue(Config.load().compact_list)
+
+    def test_right_click_menu_and_position(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        for i in (30, 31, 32):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
+        mine.refresh()
+        self.assertEqual([mine.tree._rows[i][0] for i in ("30", "31", "32")], [1, 2, 3])
+        mine.tree.__dict__["_hit"] = ("cell", "#2", "32")
+        ev = types.SimpleNamespace(x=1, y=1, x_root=1, y_root=1)
+        self.assertEqual(mine._on_right_click(ev), "break")
+        self.assertEqual(mine.selected_ids(), [32])
+        labels = [it["label"] for it in mine._menu.items if it]
+        self.assertIn(gui.app.tr("mine.ctx_position"), labels)
+        self.assertIn(gui.app.tr("tags.button"), labels)
+        fav = next(it for it in mine._menu.items
+                   if it and it["label"] == gui.app.tr("mine.ctx_favorite"))
+        fav["command"]()
+        self.assertTrue(lib.mods[32].favorite)
+        sd = fake_tk.sys.modules["tkinter.simpledialog"]
+        sd.answers[:] = [1]
+        mine.search_var.set("mod 32")
+        mine.ask_position()
+        self.assertEqual([m.mod_id for m in lib.folder_mods()], [32, 30, 31])
+        mine.search_var.set("")
+        self.assertEqual(mine.tree._rows["32"][0], 1)
+        mine.tree.selection_set(["30"])
+        mine.tree.__dict__["_hit"] = ("cell", "#1", "30")
+        sd.answers[:] = [3]
+        mine._on_double(ev)
+        self.assertEqual([m.mod_id for m in lib.folder_mods()], [32, 31, 30])
+        self.assertEqual(lib.priority(32), lib.PRIORITY_BASE)
+        mine.tree.selection_set(["30", "31"])
+        mine.tree.__dict__["_hit"] = ("cell", "#2", "30")
+        mine._on_right_click(ev)
+        pos = next(it for it in mine._menu.items
+                   if it and it["label"] == gui.app.tr("mine.ctx_position"))
+        self.assertEqual(pos["state"], "disabled")
+
     def test_details_from_my_mods_and_browse(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib
         lib.add("https://mod.io/g/drg/m/mod-30")
         mine.refresh()
-        mine.tree.__dict__["_hit"] = ("cell", "#1", "30")
+        mine.tree.__dict__["_hit"] = ("cell", "#2", "30")
         self.assertEqual(mine._on_double(types.SimpleNamespace(x=1, y=1)), "break")
         pump(app)
         d = app._details
@@ -1269,12 +1368,12 @@ class FeatureTests(GuiBase):
         self.assertNotIn(34, app.lib.mods)
         warns = [m for m in self.messages() if m[0] == "warn"]
         self.assertTrue(any("Mod 34" in m[2] and "mod-34" in m[2] for m in warns))
-        self.assertTrue(mine.tree._rows["33"][0].endswith(" ⚠"))
+        self.assertTrue(mine.tree._rows["33"][1].endswith(" ⚠"))
         mine.tree.selection_set(["33"])
         mine.show_note()
         self.assertIn("Mod 34", app.status.get())
         mine.set_states({33: False})
-        self.assertFalse(mine.tree._rows["33"][0].endswith(" ⚠"))
+        self.assertFalse(mine.tree._rows["33"][1].endswith(" ⚠"))
 
     def test_game_update_warning(self):
         app = self.make_app()
@@ -1404,6 +1503,14 @@ class ShortcutCompactUpdateTests(GuiBase):
         self.assertTrue(app.destroyed)
 
 
+    def test_settings_fit_screen(self):
+        app = self.make_app()
+        dlg = gui.settings.SettingsDialog(app)
+        canvas = next(w for w in dlg.winfo_children()
+                      if isinstance(w, gui.settings.ScrollFrame)).canvas
+        self.assertEqual(canvas.kw["width"], 600)
+        self.assertLessEqual(canvas.kw["height"], 768)
+
     def test_karl_check_at_startup_option(self):
         app = self.make_app()
         calls = []
@@ -1461,6 +1568,9 @@ class FakeTrayModule:
                 self.updates += 1
 
         self.Menu, self.MenuItem, self.Icon = Menu, MenuItem, Icon
+
+
+sys.modules["pystray"] = FakeTrayModule()
 
 
 class BatchFourGuiTests(GuiBase):
@@ -1527,14 +1637,33 @@ class BatchFourGuiTests(GuiBase):
             lib.add(f"https://mod.io/g/drg/m/mod-{i}")
         lib.mods[31].added_at += 100
         mine.refresh()
-        self.assertEqual(mine.tree._rows["30"][2], "3 B")
+        self.assertEqual(mine.tree._rows["30"][3], "3 B")
         mine.tree.selection_set(["30", "32"])
-        sd = fake_tk.sys.modules["tkinter.simpledialog"]
-        sd.answers[:] = ["HUD, Audio"]
         mine.edit_tags()
+        dlg = mine.tags_dialog
+        for name in ("HUD", "Audio", "hud"):
+            dlg.new_var.set(name)
+            dlg.add_new()
+        self.assertEqual(list(dlg.vars), ["HUD", "Audio"])
+        dlg.save()
         self.assertEqual(lib.mods[32].tags, ["HUD", "Audio"])
+        self.assertEqual(lib.mods[31].tags, [])
+        mine.show_var.set(gui.app.tr("mine.show_untagged"))
+        mine.refresh()
+        self.assertEqual(mine.tree.get_children(), ["31"])
+        mine.tree.selection_set(["30"])
+        mine.edit_tags()
+        dlg = mine.tags_dialog
+        self.assertTrue(dlg.vars["HUD"].get())
+        dlg.vars["Audio"].set(False)
+        dlg.save()
+        self.assertEqual(lib.mods[30].tags, ["HUD"])
+        self.assertEqual(lib.mods[32].tags, ["HUD", "Audio"])
+        lib.update_tags([30], ["Audio"], [])
+        mine.show_var.set(mine.show_choices[0])
+        mine.refresh()
         self.assertIn("Tag: HUD", mine.show_choices)
-        self.assertTrue(mine.tree._rows["30"][0].endswith("[HUD, Audio]"))
+        self.assertTrue(mine.tree._rows["30"][4] == "HUD, Audio")
         mine.show_var.set("Tag: HUD")
         mine.refresh()
         self.assertEqual(sorted(mine.tree.get_children()), ["30", "32"])
@@ -1554,9 +1683,14 @@ class BatchFourGuiTests(GuiBase):
         mine.sort_var.set(mine.sort_labels[0])
         self.assertFalse(mine.filtered())
         mine.tree.selection_set(["30", "32"])
-        sd.answers[:] = [""]
         mine.edit_tags()
-        self.assertEqual(mine.show_choices, [mine.show_choices[0], mine.show_choices[1]])
+        dlg = mine.tags_dialog
+        for v in dlg.vars.values():
+            v.set(False)
+        dlg.save()
+        self.assertEqual(mine.show_choices, [gui.app.tr("mine.show_all"),
+                                             gui.app.tr("mine.show_fav"),
+                                             gui.app.tr("mine.show_untagged")])
 
     def test_drop_files_and_links(self):
         app = self.make_app()
@@ -1586,7 +1720,7 @@ class BatchFourGuiTests(GuiBase):
         self.assertEqual(len(warns), 1)
         self.assertIn("Mod 31", warns[0][2])
         self.assertNotIn("Mod 30", warns[0][2])
-        self.assertIn(" ⊘", app.mine.tree._rows["31"][0])
+        self.assertIn(" ⊘", app.mine.tree._rows["31"][1])
         app.check_removed_mods()
         pump(app)
         self.assertEqual(len([m for m in self.messages() if m[0] == "warn"]), 1)
@@ -1639,8 +1773,8 @@ class BatchFourGuiTests(GuiBase):
 
     def test_tray(self):
         fake = FakeTrayModule()
+        self.addCleanup(sys.modules.__setitem__, "pystray", sys.modules["pystray"])
         sys.modules["pystray"] = fake
-        self.addCleanup(sys.modules.pop, "pystray", None)
         app = self.make_app(close_to_tray=True)
         self.assertTrue(app.tray.running)
         icon = fake.icons[-1]

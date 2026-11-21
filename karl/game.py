@@ -51,10 +51,21 @@ def is_running() -> bool:
     return False
 
 
+def child_env() -> dict[str, str]:
+    env = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        if "LD_LIBRARY_PATH_ORIG" in env:
+            env["LD_LIBRARY_PATH"] = env["LD_LIBRARY_PATH_ORIG"]
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 def _spawn(cmd: list[str]) -> bool:
     try:
         subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+                         stderr=subprocess.DEVNULL, start_new_session=True, env=child_env())
         return True
     except OSError:
         return False

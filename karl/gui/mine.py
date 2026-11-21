@@ -15,7 +15,7 @@ from ..theme import ACCENT, BG, BORDER, DANGER, FG, FONT, MUTED, ON_ACCENT, PANE
 from ..ui import px
 from ..widgets import check_button
 from .common import ASSETS, format_when
-from .dialogs import WhatsNewDialog
+from .dialogs import TagsDialog, WhatsNewDialog
 from .timemachine import TimeMachineDialog
 from .troubleshoot import BisectDialog
 
@@ -114,9 +114,9 @@ class MineTab(tk.Frame):
         self.search_entry.bind("<Escape>", lambda _e: self.search_var.set(""))
         tk.Label(filt, text=tr("mine.search_hint"), bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(side="left", padx=(8, 0))
-        self.show_choices = [tr("mine.show_all"), tr("mine.show_fav")]
+        self.show_choices = [tr("mine.show_all"), tr("mine.show_fav"), tr("mine.show_untagged")]
         self.show_var = tk.StringVar(value=self.show_choices[0])
-        self.show_combo = ttk.Combobox(filt, textvariable=self.show_var,
+        self.show_combo = ttk.Combobox(filt, textvariable=self.show_var, height=20,
                                        values=self.show_choices, state="readonly", width=18)
         self.show_combo.pack(side="right")
         self.show_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
@@ -153,13 +153,17 @@ class MineTab(tk.Frame):
         self.sw_on = ui.photo(ASSETS / "switch_on.png")
         self.sw_off = ui.photo(ASSETS / "switch_off.png")
         self.wanted: dict[int, bool] = {}
-        cols = ("nome", "versione", "dimensione", "modalita", "preferito")
-        self.tree = ttk.Treeview(mid, columns=cols, show="tree headings", selectmode="extended")
+        self.cols = ("ordine", "nome", "versione", "dimensione", "tag", "modalita", "preferito")
+        self.tree = ttk.Treeview(mid, columns=self.cols, show="tree headings",
+                                 selectmode="extended", style="Mods.Treeview")
         self.tree.heading("#0", image=self.sw_off, command=self.toggle_all)
         self.tree.column("#0", width=px(64), minwidth=px(64), anchor="center", stretch=False)
-        for c, key, w in zip(cols[:4], ("mine.col_name", "mine.col_version", "mine.col_size",
-                                        "mine.col_mode"), (420, 150, 90, 110)):
-            self.tree.heading(c, text=tr(key))
+        self.tree.heading("ordine", text=tr("mine.col_order"))
+        self.tree.column("ordine", width=px(46), minwidth=px(40), anchor="center", stretch=False)
+        for c, key, w in zip(self.cols[1:6], ("mine.col_name", "mine.col_version",
+                                              "mine.col_size", "mine.col_tags", "mine.col_mode"),
+                             (360, 140, 85, 150, 100)):
+            self.tree.heading(c, text=tr(key), anchor="w")
             self.tree.column(c, width=px(w), anchor="w")
         self.tree.heading("preferito", text="★")
         self.tree.column("preferito", width=px(48), minwidth=px(48), anchor="center",
@@ -172,6 +176,10 @@ class MineTab(tk.Frame):
         self._drag: Optional[str] = None
         self._drag_moved = False
         self.tree.bind("<Double-1>", self._on_double)
+        self.tree.bind("<Button-3>", self._on_right_click)
+        self.tree.bind("<Control-a>", self.select_all)
+        self.tree.bind("<Control-A>", self.select_all)
+        self.tree.bind("<Button-2>", self._on_right_click)
         self.tree.bind("<<TreeviewSelect>>", self.show_note, add="+")
         self.tree.bind("<space>", lambda e: (self.toggle(), "break")[1])
         self.tree.bind("<Delete>", lambda e: (self.remove(), "break")[1])
@@ -292,6 +300,7 @@ class MineTab(tk.Frame):
         mods = self.visible_mods()
         missing = self.lib.missing_dependencies(self.wanted)
         clashes = self.lib.conflicts(self.wanted)
+        positions = {m.mod_id: n for n, m in enumerate(self.lib.folder_mods(), 1)}
         for m in mods:
             on = self.is_on(m)
             ver = m.version or "-"
@@ -300,12 +309,12 @@ class MineTab(tk.Frame):
             if m.has_update:
                 ver = f"{ver} → {m.latest_version}"
             label = (m.name + (" ✎" if m.note else "") + (" ⚠" if m.mod_id in missing else "")
-                     + (" ⇄" if m.mod_id in clashes else "") + (" ⊘" if m.removed else "")
-                     + (f"   [{', '.join(m.tags)}]" if m.tags else ""))
+                     + (" ⇄" if m.mod_id in clashes else "") + (" ⊘" if m.removed else ""))
             self.tree.insert("", "end", iid=str(m.mod_id), text="",
                              image=self.sw_on if on else self.sw_off,
                              tags=() if on else ("off",),
-                             values=(label, ver, human_size(self.lib.mod_size(m)),
+                             values=(positions.get(m.mod_id, ""), label, ver,
+                                     human_size(self.lib.mod_size(m)), ", ".join(m.tags),
                                      tr("mode.file") if m.source == SOURCE_FILE
                                      else (m.approval or "-"),
                                      "★" if m.favorite else "☆"))
@@ -317,7 +326,10 @@ class MineTab(tk.Frame):
         self._update_unsaved()
 
     def only_favorites(self) -> bool:
-        return self.show_var.get() == self.show_choices[1]
+        return self.show_var.get() == tr("mine.show_fav")
+
+    def only_untagged(self) -> bool:
+        return self.show_var.get() == tr("mine.show_untagged")
 
     def search_text(self) -> str:
         return " ".join(self.search_var.get().lower().split())
@@ -335,7 +347,7 @@ class MineTab(tk.Frame):
             else "order"
 
     def update_show_choices(self):
-        choices = [tr("mine.show_all"), tr("mine.show_fav")] + [
+        choices = [tr("mine.show_all"), tr("mine.show_fav"), tr("mine.show_untagged")] + [
             tr("mine.show_tag", tag=t) for t in self.lib.all_tags()]
         self.show_choices = choices
         self.show_combo.configure(values=choices)
@@ -343,13 +355,15 @@ class MineTab(tk.Frame):
             self.show_var.set(choices[0])
 
     def filtered(self) -> bool:
-        return (self.only_favorites() or bool(self.search_text())
+        return (self.only_favorites() or self.only_untagged() or bool(self.search_text())
                 or self.selected_tag() is not None or self.sort_key() != "order")
 
     def visible_mods(self) -> list:
         mods = self.lib.folder_mods()
         if self.only_favorites():
             mods = [m for m in mods if m.favorite]
+        if self.only_untagged():
+            mods = [m for m in mods if not m.tags]
         tag = self.selected_tag()
         if tag is not None:
             mods = [m for m in mods if tag.lower() in (t.lower() for t in m.tags)]
@@ -387,9 +401,18 @@ class MineTab(tk.Frame):
             hot = value > 0 and key != "installed"
             self.count_lbls[key].configure(text=str(value), fg=ACCENT if hot else FG)
 
+    def _column(self, e) -> str:
+        c = self.tree.identify_column(e.x)
+        if c == "#0":
+            return c
+        try:
+            return self.cols[int(c[1:]) - 1]
+        except (ValueError, IndexError):
+            return ""
+
     def _on_click(self, e):
         region = self.tree.identify_region(e.x, e.y)
-        if region in ("tree", "cell") and self.tree.identify_column(e.x) == "#5":
+        if region in ("tree", "cell") and self._column(e) == "preferito":
             row = self.tree.identify_row(e.y)
             if row and int(row) in self.lib.mods:
                 self.lib.set_favorite([int(row)])
@@ -449,13 +472,76 @@ class MineTab(tk.Frame):
             self.tree.selection_set([str(mod_id)])
 
     def _on_double(self, e):
-        if self.tree.identify_column(e.x) in ("#0", "#5"):
+        col = self._column(e)
+        if col in ("#0", "preferito"):
             return "break"
         row = self.tree.identify_row(e.y)
         if row:
             self.tree.selection_set([row])
-            self.open_details()
+            if col == "ordine":
+                self.ask_position()
+            else:
+                self.open_details()
         return "break"
+
+    def _on_right_click(self, e):
+        row = self.tree.identify_row(e.y)
+        if not row:
+            return "break"
+        if row not in self.tree.selection():
+            self.tree.selection_set([row])
+        one = len(self.selected_ids()) == 1
+        menu = tk.Menu(self, tearoff=0, bg=PANEL, fg=FG, activebackground=ACCENT,
+                       activeforeground=ON_ACCENT)
+        items = [("mine.ctx_toggle", self.toggle, True),
+                 ("mine.ctx_favorite", self.toggle_favorite, True),
+                 ("mine.ctx_position", self.ask_position, one),
+                 None,
+                 ("mine.ctx_details", self.open_details, one),
+                 ("mine.open", self.open_page, True),
+                 ("rollback.button", self.rollback, True),
+                 ("mine.note", self.edit_note, True),
+                 ("tags.button", self.edit_tags, True),
+                 None,
+                 ("mine.remove", self.remove, True)]
+        for item in items:
+            if item is None:
+                menu.add_separator()
+            else:
+                key, cmd, ok = item
+                menu.add_command(label=tr(key), command=cmd,
+                                 state="normal" if ok else "disabled")
+        self._menu = menu
+        menu.tk_popup(e.x_root, e.y_root)
+        return "break"
+
+    def select_all(self, _e=None):
+        self.tree.selection_set(self.tree.get_children())
+        return "break"
+
+    def toggle_favorite(self):
+        ids = [i for i in self.selected_ids() if i in self.lib.mods]
+        if ids:
+            self.lib.set_favorite(ids)
+            self.refresh()
+
+    def ask_position(self):
+        ids = self.selected_ids()
+        if len(ids) != 1 or ids[0] not in self.lib.mods:
+            return
+        mid = ids[0]
+        n = len(self.lib.folder_mods())
+        pos = simpledialog.askinteger(APP_TITLE, tr("order.ask", name=self.lib.mods[mid].name,
+                                                    n=n),
+                                      initialvalue=self.lib.position(mid), minvalue=1,
+                                      maxvalue=n, parent=self)
+        if pos is None:
+            return
+        self.lib.move_to(mid, pos)
+        self.refresh()
+        self.tree.selection_set([str(mid)])
+        self.tree.see(str(mid))
+        self.app.set_status(tr("order.moved", name=self.lib.mods[mid].name, pos=pos))
 
     def open_details(self):
         ids = self.selected_ids()
@@ -631,17 +717,9 @@ class MineTab(tk.Frame):
         ids = [i for i in self.selected_ids() if i in self.lib.mods]
         if not ids:
             return
-        first = self.lib.mods[ids[0]]
-        prompt = tr("tags.ask", name=first.name) if len(ids) == 1 else tr("tags.ask_many",
-                                                                            n=len(ids))
-        known = self.lib.all_tags()
-        if known:
-            prompt += "\n\n" + tr("tags.known", tags=", ".join(known))
-        text = simpledialog.askstring(APP_TITLE, prompt, initialvalue=", ".join(first.tags),
-                                      parent=self)
-        if text is None:
-            return
-        self.lib.set_tags(ids, text)
+        self.tags_dialog = TagsDialog(self.app, ids, self._after_tags)
+
+    def _after_tags(self):
         self.update_show_choices()
         self.refresh()
 
@@ -672,14 +750,14 @@ class MineTab(tk.Frame):
         ids = self.selected_ids()
         if not ids or self.app.busy:
             return
-        no_prev = [self.lib.mods[i].name for i in ids if not self.lib.has_previous(i)]
+        no_prev = [self.lib.mods[i].name for i in ids if not self.lib.can_rollback(i)]
         if no_prev:
             self.app.show_error(tr("rollback.none_for", names=", ".join(no_prev)))
             return
 
         def work():
             for i in ids:
-                self.lib.rollback(i, log=self.app.log)
+                self.lib.rollback(i, log=self.app.log, progress=self.app.on_progress)
 
         self.app.run(tr("rollback.working"), work)
 

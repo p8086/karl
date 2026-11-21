@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import GITHUB_REPO, VERSION
+from .game import child_env
 
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -160,7 +161,8 @@ def prepare(release: dict, exe: Path, workdir: Path,
 def restart(plan: dict) -> None:
     if plan["kind"] == "windows":
         flags = 0x00000008 | 0x08000000
-        subprocess.Popen(["cmd", "/c", plan["script"]], creationflags=flags, close_fds=True)
+        subprocess.Popen(["cmd", "/c", plan["script"]], creationflags=flags, close_fds=True,
+                         env=child_env())
     else:
         subprocess.Popen([plan["exe"]], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+                         stderr=subprocess.DEVNULL, start_new_session=True, env=child_env())

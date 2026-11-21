@@ -8,10 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from . import VERSION, game, integration, proton
+from . import VERSION, game, integration, log as karl_log, proton
 from .entry import SOURCE_FILE
 from .i18n import human_size
-from .log import LOG_FILE
 from .modio import mask_token
 
 if TYPE_CHECKING:
@@ -173,12 +172,17 @@ def _disk_and_log(lib: "Library", add) -> None:
         add(INFO, "Disk: " + ", ".join(f"{k} {human_size(v)}" for k, v in rep.items()))
     except Exception as err:
         add(WARN, f"Disk: {err}")
-    add(INFO, f"Log file: {LOG_FILE}")
+    add(INFO, f"Log file: {karl_log.LOG_FILE}")
     try:
-        lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = karl_log.LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return
-    for ln in [ln for ln in lines if "WARNING" in ln or "ERROR" in ln][-10:]:
+    since = karl_log.session_start
+    found = [ln for ln in lines
+             if ("WARNING" in ln or "ERROR" in ln) and ln[:19] >= since][-10:]
+    if not found:
+        add(OK, "Log: no warnings or errors since Karl started")
+    for ln in found:
         add(INFO, "log: " + ln)
 
 

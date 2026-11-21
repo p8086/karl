@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import html
 import json
 import re
 import urllib.error
@@ -237,7 +239,6 @@ class ModioClient:
 
 
 def token_expiry(token: str) -> Optional[int]:
-    import base64
     parts = (token or "").strip().split(".")
     if len(parts) != 3:
         return None
@@ -291,7 +292,6 @@ def game_versions_of(mod: dict) -> list[str]:
 
 
 def mod_name(mod: dict) -> str:
-    import html
     return html.unescape(str(mod.get("name") or "")).strip()
 
 
@@ -299,6 +299,4 @@ def dependency_info(dep: dict) -> dict:
     mid = int(dep.get("mod_id") or dep.get("id"))
     slug = dep.get("name_id") or ""
     url = dep.get("profile_url") or (f"https://mod.io/g/drg/m/{slug}" if slug else "")
-    import html
-    name = html.unescape(str(dep.get("name") or "")).strip()
-    return {"id": mid, "name": name or slug or str(mid), "url": url}
+    return {"id": mid, "name": mod_name(dep) or slug or str(mid), "url": url}

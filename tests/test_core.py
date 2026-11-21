@@ -13,7 +13,7 @@ os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from karl import config, entry, modio, paths
-from karl.config import Config
+from karl.config import Config, new_install
 from karl.library import Library
 from karl.modio import parse_mod_url
 
@@ -52,9 +52,6 @@ class FakeClient:
     def subscribed_mods(self, g):
         return [self._mod()] if 42 in FakeClient.subs else []
 
-    def subscribe(self, g, m):
-        FakeClient.subs.add(m)
-
     def unsubscribe(self, g, m):
         FakeClient.subs.discard(m)
 
@@ -64,13 +61,16 @@ class FakeClient:
     def dependencies(self, g, m):
         return FakeClient.deps.get(m, [])
 
+    files: list = []
+
     def list_modfiles(self, g, m, limit=10):
-        return []
+        return FakeClient.files
 
     def download(self, url, dest, progress=None, md5=""):
         FakeClient.md5_seen.append(md5)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        data = make_zip({"cartella/../../evil/Test.pak": b"PAK" + FakeClient.version["v"].encode(),
+        v = url.rsplit("/v", 1)[1][:-4] if "/v" in url else FakeClient.version["v"]
+        data = make_zip({"cartella/../../evil/Test.pak": b"PAK" + v.encode(),
                          "readme.txt": b"ciao"})
         dest.write_bytes(data)
         if progress:
@@ -94,6 +94,7 @@ class Tests(unittest.TestCase):
                 f.unlink()
         FakeClient.version = {"file_id": 1, "v": "1.0"}
         FakeClient.subs = set()
+        FakeClient.files = []
         self.lib = Library(self.cfg, client_factory=FakeClient)
 
     def test_parse_url(self):
@@ -447,6 +448,22 @@ class Tests(unittest.TestCase):
         self.assertTrue(all(Path(p).is_file() for p in lib.mods[e.mod_id].cached_paks))
         self.assertTrue(self.inst("test-mod").exists())
 
+    def test_child_env(self):
+        import os, sys
+        from karl import game
+        saved = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(saved)))
+        os.environ["LD_LIBRARY_PATH"] = "/tmp/_MEIxyz"
+        os.environ["LD_LIBRARY_PATH_ORIG"] = "/usr/lib"
+        self.assertNotIn("PYINSTALLER_RESET_ENVIRONMENT", game.child_env())
+        sys.frozen = True
+        self.addCleanup(delattr, sys, "frozen")
+        env = game.child_env()
+        self.assertEqual(env["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/usr/lib")
+        del os.environ["LD_LIBRARY_PATH_ORIG"]
+        self.assertNotIn("LD_LIBRARY_PATH", game.child_env())
+
     def test_selfupdate(self):
         from karl import selfupdate
         self.assertTrue(selfupdate.is_newer("0.2.0", "0.1.1"))
@@ -481,6 +498,36 @@ class Tests(unittest.TestCase):
         lib.rollback(e.mod_id)
         self.assertEqual(pak.read_bytes(), b"PAK2.0")
         self.assertEqual((e.version, e.hold), ("2.0", False))
+
+    def test_rollback_from_modio(self):
+        lib = self.lib
+        FakeClient.version = {"file_id": 3, "v": "3.0"}
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
+        pak = self.inst("test-mod")
+        self.assertEqual(pak.read_bytes(), b"PAK3.0")
+        self.assertFalse(lib.has_previous(e.mod_id))
+        self.assertTrue(lib.can_rollback(e.mod_id))
+        with self.assertRaises(modio.ModioError):
+            lib.rollback(e.mod_id)
+        FakeClient.files = [
+            {"id": 3, "version": "3.0", "filename": "t.zip",
+             "download": {"binary_url": "https://x/v3.0.zip"}},
+            {"id": 2, "version": "2.0", "filename": "t.zip",
+             "download": {"binary_url": "https://x/v2.0.zip"}},
+            {"id": 1, "version": "1.0", "filename": "t.zip",
+             "download": {"binary_url": "https://x/v1.0.zip"}},
+        ]
+        lib.rollback(e.mod_id)
+        self.assertEqual(pak.read_bytes(), b"PAK2.0")
+        self.assertEqual((e.version, e.file_id, e.hold), ("2.0", 2, True))
+        self.assertEqual(lib.find_updates()["updates"], [])
+        lib.rollback(e.mod_id)
+        self.assertEqual(pak.read_bytes(), b"PAK3.0")
+        self.assertEqual((e.version, e.hold), ("3.0", False))
+        f = self.paks.parent / "mia.pak"
+        f.write_bytes(b"x")
+        local = lib.add_local_file(str(f))
+        self.assertFalse(lib.can_rollback(local.mod_id))
 
     def test_dev_reimport(self):
         import os, time
@@ -861,17 +908,38 @@ class BatchFourTests(unittest.TestCase):
         self.assertGreater(e.added_at, 0)
         self.assertGreater(e.updated_at, 0)
         self.assertEqual(self.lib.mod_size(e), len(b"PAK1.0"))
-        self.lib.set_tags([42], " HUD, #audio ,hud,, Da   provare ")
+        self.lib.update_tags([42], [" HUD", "#audio ", "hud", "", "Da   provare "], [])
         self.assertEqual(e.tags, ["HUD", "audio", "Da provare"])
+        self.lib.update_tags([42], ["Nuovo"], ["AUDIO"])
+        self.assertEqual(e.tags, ["HUD", "Da provare", "Nuovo"])
+        self.lib.update_tags([42], ["audio", "Da provare"], ["nuovo", "da provare"])
         self.assertEqual(self.lib.all_tags(), ["audio", "Da provare", "HUD"])
         out = Path(tempfile.mkdtemp()) / "conf.karl"
         self.lib.export_profile(out)
         data = json.loads(out.read_text(encoding="utf-8"))
         self.assertEqual(data["mods"]["42"]["tags"], ["HUD", "audio", "Da provare"])
-        self.lib.set_tags([42], "")
+        self.lib.update_tags([42], [], list(e.tags))
         self.assertEqual(e.tags, [])
         self.lib.import_profile(out)
         self.assertEqual(self.lib.mods[42].tags, ["HUD", "audio", "Da provare"])
+
+    def test_move_to(self):
+        lib = self.lib
+        for slug in ("a", "b", "c"):
+            FakeClient.version = {"file_id": 1, "v": "1.0"}
+            lib.add_mod_object({"id": ord(slug), "game_id": 2475, "name": slug, "name_id": slug,
+                                "modfile": {"id": 1, "version": "1.0", "filename": "t.zip",
+                                            "download": {"binary_url": "https://x/t.zip"}}})
+        order = lambda: [m.name for m in lib.folder_mods()]
+        self.assertEqual(order(), ["a", "b", "c"])
+        self.assertEqual(lib.position(ord("c")), 3)
+        lib.move_to(ord("c"), 1)
+        self.assertEqual(order(), ["c", "a", "b"])
+        lib.move_to(ord("c"), 99)
+        self.assertEqual(order(), ["a", "b", "c"])
+        lib.move_to(ord("b"), 0)
+        self.assertEqual(order(), ["b", "a", "c"])
+        self.assertEqual(lib.priority(ord("b")), lib.PRIORITY_BASE)
 
     def test_check_removed(self):
         self.lib.add("https://mod.io/g/drg/m/test-mod")
@@ -917,6 +985,25 @@ class BatchFourTests(unittest.TestCase):
         text = diagnostics.format_report(diagnostics.run(self.lib, network=False))
         self.assertIn("[FAIL] Paks folder: not set", text)
 
+    def test_diagnostics_log_only_this_session(self):
+        from karl import diagnostics, log as karl_log
+        logfile = Path(tempfile.mkdtemp()) / "karl.log"
+        logfile.write_text("2026-11-21 21:09:50,315 ERROR vecchio\nTraceback\n"
+                           "2026-11-21 21:50:00,001 INFO Karl 0.4.0\n"
+                           "2026-11-21 21:51:00,002 WARNING nuovo\n", encoding="utf-8")
+        saved = (karl_log.LOG_FILE, karl_log.session_start)
+        self.addCleanup(lambda: (setattr(karl_log, "LOG_FILE", saved[0]),
+                                 setattr(karl_log, "session_start", saved[1])))
+        karl_log.LOG_FILE = logfile
+        karl_log.session_start = "2026-11-21 21:50:00"
+        text = diagnostics.format_report(diagnostics.run(self.lib, network=False))
+        self.assertIn("nuovo", text)
+        self.assertNotIn("vecchio", text)
+        karl_log.session_start = "2026-11-21 21:52:00"
+        text = diagnostics.format_report(diagnostics.run(self.lib, network=False))
+        self.assertIn("no warnings or errors since Karl started", text)
+
+
 class InstallsAndScaleTests(unittest.TestCase):
     def setUp(self):
         root = Path(tempfile.mkdtemp())
@@ -953,7 +1040,9 @@ class InstallsAndScaleTests(unittest.TestCase):
         main_cache = paths.MODS_CACHE
         self.assertTrue(list(self.main_paks.glob("*karl_test-mod*")))
 
-        beta = cfg.add_install("Beta", str(self.beta_paks))
+        cfg.ensure_installs()
+        cfg.installs.append(new_install("Beta", str(self.beta_paks)))
+        beta = cfg.installs[-1]["id"]
         cfg.activate(beta)
         self.assertEqual(cfg.paks_dir, str(self.beta_paks))
         lib2 = Library(cfg, client_factory=FakeClient)

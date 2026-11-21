@@ -10,8 +10,8 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import TYPE_CHECKING
 
 from .. import APP_TITLE, i18n, tray as karl_tray, ui
-from ..browse import Choice
-from ..config import Config, find_paks_dir
+from ..browse import Choice, ScrollFrame
+from ..config import Config, find_paks_dir, new_install
 from ..i18n import human_date, tr
 from ..modio import mask_token, token_expiry
 from ..paths import install_dirs
@@ -34,7 +34,13 @@ class SettingsDialog(tk.Toplevel):
         self.transient(app)
         cfg = app.config_
 
-        f = ttk.Frame(self, padding=16)
+        bar = ttk.Frame(self, padding=(16, 8, 16, 14))
+        bar.pack(side="bottom", fill="x")
+        ttk.Button(bar, text=tr("settings.save"), style="Accent.TButton",
+                   command=self.save).pack(side="right")
+        scroll = ScrollFrame(self, bg=BG)
+        scroll.pack(fill="both", expand=True)
+        f = ttk.Frame(scroll.inner, padding=(16, 16, 16, 0))
         f.pack(fill="both", expand=True)
 
         self.token_box = tk.Frame(f, bg=PANEL, padx=14, pady=12, highlightthickness=1,
@@ -48,9 +54,28 @@ class SettingsDialog(tk.Toplevel):
         self._build_misc(f, cfg)
         self._build_maintenance(f, cfg)
         self._build_tools(f)
+        self.update_idletasks()
+        scroll.canvas.configure(width=min(f.winfo_reqwidth(),
+                                          self.winfo_screenwidth() - ui.px(60)),
+                                height=min(f.winfo_reqheight(),
+                                           self.winfo_screenheight() - ui.px(180)))
+        self.bind("<Return>", self._on_enter)
+        self.bind("<KP_Enter>", self._on_enter)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._fit_on_screen()
+        self.lift()
+        self.focus_force()
 
-        ttk.Button(f, text=tr("settings.save"), style="Accent.TButton", command=self.save).grid(
-            row=19, column=1, sticky="e", pady=(16, 0))
+    def _on_enter(self, _e=None):
+        self.save()
+        return "break"
+
+    def _fit_on_screen(self):
+        self.update_idletasks()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        x = max(0, (self.winfo_screenwidth() - w) // 2)
+        y = max(0, (self.winfo_screenheight() - h) // 2 - ui.px(30))
+        self.geometry(f"+{x}+{y}")
 
     def _build_language(self, f: ttk.Frame, cfg: Config) -> None:
         ttk.Label(f, text=tr("settings.language")).grid(row=1, column=0, sticky="w")
@@ -102,6 +127,9 @@ class SettingsDialog(tk.Toplevel):
         ttk.Combobox(misc, textvariable=self.scale_var, state="readonly", width=10,
                      values=[ui.label(s) for s in ui.SCALES]).grid(row=1, column=1, sticky="w",
                                                                    padx=(24, 0))
+        self.compact_list = tk.BooleanVar(value=cfg.compact_list)
+        check_button(misc, tr("settings.compact_list"), self.compact_list).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_maintenance(self, f: ttk.Frame, cfg: Config) -> None:
         tk.Label(f, text=tr("settings.maintenance"), bg=BG, fg=ACCENT,
@@ -288,9 +316,7 @@ class SettingsDialog(tk.Toplevel):
         if not name or not name.strip():
             return
         self._store_install()
-        import uuid
-        new = {"id": uuid.uuid4().hex[:10], "name": name.strip()[:40], "paks_dir": "",
-               "game_build": ""}
+        new = new_install(name)
         self.installs.append(new)
         self.sel_install = new["id"]
         self.paks.set("")
@@ -363,6 +389,7 @@ class SettingsDialog(tk.Toplevel):
         cfg.tray_icon = bool(self.tray_icon.get())
         cfg.close_to_tray = bool(self.close_to_tray.get()) and cfg.tray_icon
         cfg.show_whats_new = bool(self.whats_new.get())
+        cfg.compact_list = bool(self.compact_list.get())
         new_lang = self.language.key
         lang_changed = new_lang != (cfg.language or i18n.AUTO)
         cfg.save()
@@ -370,6 +397,7 @@ class SettingsDialog(tk.Toplevel):
         if lang_changed:
             app.change_language(new_lang)
         app.apply_update_icon()
+        app.apply_list_style()
         if cfg.check_karl_updates and not karl_was and cfg.karl_check_startup:
             app.check_karl_update()
         app.apply_tray()

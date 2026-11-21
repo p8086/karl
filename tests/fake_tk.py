@@ -54,7 +54,7 @@ class Widget:
         "tk_popup", "add_command", "add", "column", "set", "theme_use", "map",
         "itemconfigure", "yview_moveto", "yview_scroll", "unbind_all",
         "update_idletasks", "columnconfigure", "rowconfigure", "select", "index", "tab",
-        "deiconify", "focus_force", "attributes", "withdraw", "bind_class",
+        "deiconify", "focus_force", "attributes", "withdraw", "bind_class", "see",
     }
 
     def __getattr__(self, name):
@@ -75,6 +75,18 @@ class Widget:
 
     def winfo_exists(self):
         return not self.destroyed
+
+    def winfo_reqwidth(self):
+        return 600
+
+    def winfo_reqheight(self):
+        return 900
+
+    def winfo_screenwidth(self):
+        return 1920
+
+    def winfo_screenheight(self):
+        return 768
 
     def winfo_children(self):
         return [c for c in self.children_ if not c.destroyed]
@@ -199,6 +211,14 @@ class PhotoImage:
         self.kw = k
 
 
+class Menu(Widget):
+    def add_command(self, **kw):
+        self.__dict__.setdefault("items", []).append(kw)
+
+    def add_separator(self):
+        self.__dict__.setdefault("items", []).append(None)
+
+
 def _mod(name, **attrs):
     m = types.ModuleType(name)
     m.__dict__.update(attrs)
@@ -206,10 +226,10 @@ def _mod(name, **attrs):
 
 
 def install():
-    names = ["Frame", "Label", "Button", "Canvas", "Toplevel", "Menu", "Checkbutton",
+    names = ["Frame", "Label", "Button", "Canvas", "Toplevel", "Checkbutton",
              "Radiobutton", "Entry", "Listbox", "Scrollbar"]
     tk = _mod("tkinter", Tk=Tk, TclError=TclError, StringVar=StringVar, BooleanVar=BooleanVar,
-              IntVar=IntVar, PhotoImage=PhotoImage, Misc=Widget, Text=Text,
+              IntVar=IntVar, PhotoImage=PhotoImage, Misc=Widget, Text=Text, Menu=Menu,
               **{n: type(n, (Widget,), {}) for n in names})
     ttk_names = ["Frame", "Label", "Button", "Entry", "Combobox", "Treeview", "Scrollbar",
                  "Progressbar", "Notebook", "Style"]
@@ -226,6 +246,7 @@ def install():
     fd.askopenfilename = lambda **k: fd.answers.pop(0) if fd.answers else ""
     sd = _mod("tkinter.simpledialog", answers=[])
     sd.askstring = lambda *a, **k: sd.answers.pop(0) if sd.answers else None
+    sd.askinteger = sd.askstring
     tk.ttk, tk.messagebox, tk.filedialog, tk.simpledialog = ttk, mb, fd, sd
     sys.modules.update({"tkinter": tk, "tkinter.ttk": ttk, "tkinter.messagebox": mb,
                         "tkinter.filedialog": fd, "tkinter.simpledialog": sd})

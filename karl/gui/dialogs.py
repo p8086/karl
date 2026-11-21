@@ -86,6 +86,7 @@ class LoginDialog(tk.Toplevel):
 
         self.app.submit(lambda: self.app.client(token).check_access(), ok, fail)
 
+
 class DiagnosticsDialog(tk.Toplevel):
     def __init__(self, app: App, parent=None):
         super().__init__(parent or app)
@@ -148,6 +149,7 @@ class DiagnosticsDialog(tk.Toplevel):
         if path:
             Path(path).write_text(self.report + "\n", encoding="utf-8")
             self.app.set_status(tr("diag.saved", path=path))
+
 
 class WhatsNewDialog(tk.Toplevel):
     def __init__(self, app: App, changes: list[dict], karl_notes: Optional[str] = None):
@@ -217,6 +219,7 @@ class WhatsNewDialog(tk.Toplevel):
             self.app.config_.save()
         self.destroy()
 
+
 class CacheDialog(tk.Toplevel):
     ROWS = (("mods", False), ("snapshots", False), ("unused", True), ("covers", True),
             ("previous", True))
@@ -271,3 +274,102 @@ class CacheDialog(tk.Toplevel):
         self.report = self.app.lib.cache_report()
         self._render()
         self.app.set_status(tr("cache.done", size=human_size(freed)))
+
+
+class TagsDialog(tk.Toplevel):
+    COLUMNS = 3
+
+    def __init__(self, app: App, ids: list[int], on_done: Callable[[], None]):
+        super().__init__(app)
+        self.app = app
+        self.ids = ids
+        self.on_done = on_done
+        self.title(tr("tags.title"))
+        self.configure(bg=BG)
+        self.resizable(False, False)
+        self.transient(app)
+        safe_grab(self)
+        mods = [app.lib.mods[i] for i in ids]
+        f = tk.Frame(self, bg=BG, padx=20, pady=16)
+        f.pack(fill="both", expand=True)
+        head = (tr("tags.choose", name=mods[0].name) if len(mods) == 1
+                else tr("tags.choose_many", n=len(mods)))
+        tk.Label(f, text=head, bg=BG, fg=FG, font=(FONT, 11, "bold"), anchor="w",
+                 wraplength=px(460), justify="left").pack(fill="x")
+        self.box = tk.Frame(f, bg=BG)
+        self.box.pack(fill="x", pady=(10, 0))
+        self.vars: dict[str, tk.BooleanVar] = {}
+        self.initial: dict[str, bool] = {}
+        for t in app.lib.all_tags():
+            on = all(t.lower() in (x.lower() for x in m.tags) for m in mods)
+            self.vars[t] = tk.BooleanVar(value=on)
+            self.initial[t] = on
+        self._render()
+        row = tk.Frame(f, bg=BG)
+        row.pack(fill="x", pady=(14, 0))
+        tk.Label(row, text=tr("tags.new"), bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        self.new_var = tk.StringVar()
+        entry = ttk.Entry(row, textvariable=self.new_var, width=24)
+        entry.pack(side="left", padx=(8, 6))
+        entry.bind("<Return>", lambda _e: self.add_new())
+        ttk.Button(row, text=tr("tags.add"), command=self.add_new).pack(side="left")
+        btns = tk.Frame(f, bg=BG)
+        btns.pack(fill="x", pady=(16, 0))
+        ttk.Button(btns, text=tr("settings.save"), style="Accent.TButton",
+                   command=self.save).pack(side="right")
+        ttk.Button(btns, text=tr("common.cancel"), command=self.destroy).pack(
+            side="right", padx=(0, 8))
+        entry.focus_set()
+
+    def _render(self) -> None:
+        for w in self.box.winfo_children():
+            w.destroy()
+        if not self.vars:
+            tk.Label(self.box, text=tr("tags.none_yet"), bg=BG, fg=MUTED,
+                     font=(FONT, 9)).grid(row=0, column=0, sticky="w")
+            return
+        for n, (tag, var) in enumerate(self.vars.items()):
+            cell = tk.Frame(self.box, bg=BG)
+            cell.grid(row=n // self.COLUMNS, column=n % self.COLUMNS, sticky="w", padx=(0, 16))
+            check_button(cell, tag, var).pack(side="left")
+            x = tk.Label(cell, text="✕", bg=BG, fg=MUTED, cursor="hand2", font=(FONT, 9))
+            x.pack(side="left", padx=(2, 0))
+            x.bind("<Button-1>", lambda _e, t=tag: self.delete_tag(t))
+            x.bind("<Enter>", lambda _e, w=x: w.configure(fg=DANGER))
+            x.bind("<Leave>", lambda _e, w=x: w.configure(fg=MUTED))
+
+    def add_new(self) -> None:
+        name = " ".join(self.new_var.get().replace("#", " ").replace(",", " ").split())[:30]
+        self.new_var.set("")
+        if not name:
+            return
+        known = {t.lower(): t for t in self.vars}
+        if name.lower() in known:
+            self.vars[known[name.lower()]].set(True)
+            return
+        self.vars[name] = tk.BooleanVar(value=True)
+        self.initial[name] = False
+        self._render()
+
+    def delete_tag(self, tag: str) -> None:
+        lib = self.app.lib
+        users = [i for i, e in lib.mods.items() if tag.lower() in (t.lower() for t in e.tags)]
+        if users and not messagebox.askyesno(tr("tags.title"),
+                                             tr("tags.delete_ask", tag=tag, n=len(users)),
+                                             parent=self):
+            return
+        if users:
+            lib.update_tags(users, [], [tag])
+        del self.vars[tag]
+        del self.initial[tag]
+        self._render()
+        self.app.set_status(tr("tags.deleted", tag=tag))
+        self.on_done()
+
+    def save(self) -> None:
+        add = [t for t, v in self.vars.items() if v.get() and not self.initial[t]]
+        remove = [t for t, v in self.vars.items() if not v.get() and self.initial[t]]
+        if add or remove:
+            self.app.lib.update_tags(self.ids, add, remove)
+        self.destroy()
+        self.on_done()

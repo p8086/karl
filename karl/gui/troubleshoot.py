@@ -67,6 +67,7 @@ class CrashDialog(tk.Toplevel):
         self.app.notebook.select(self.app.mine)
         self.app.mine.open_time_machine()
 
+
 class BisectDialog(tk.Toplevel):
     def __init__(self, app: App):
         super().__init__(app)

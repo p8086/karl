@@ -7,7 +7,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-STEAM_APP_ID = 548430
+from .game import STEAM_APP_ID
+
 SECTION = r"[Software\\Wine\\DllOverrides]"
 OVERRIDE = '"dwmapi"="native,builtin"'
 BACKUP_SUFFIX = ".karl-backup"

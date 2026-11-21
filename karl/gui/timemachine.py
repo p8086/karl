@@ -18,12 +18,14 @@ def describe_changes(ch: dict) -> str:
         parts.append(tr("tm.ch_order"))
     return ", ".join(parts) or "—"
 
+
 def history_text(e: dict) -> str:
     kind = e.get("kind", "")
     key = f"hist.{kind}"
     text = tr(key, name=e.get("name", ""), old=e.get("old", ""), new=e.get("new", ""),
               text=e.get("text", ""))
     return kind if text == key else text
+
 
 class TimeMachineDialog(tk.Toplevel):
     def __init__(self, tab: "MineTab"):

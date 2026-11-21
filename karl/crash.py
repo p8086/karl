@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from . import proton
+
 LOG_NAME = "FSD.log"
 CRITICAL = "=== Critical error: ==="
 
@@ -19,12 +21,10 @@ def crash_places(paks_dir: Path) -> list[Path]:
     local = os.environ.get("LOCALAPPDATA")
     if local:
         places.append(Path(local) / "FSD" / "Saved" / "Crashes")
-    try:
-        steamapps = Path(paks_dir).parents[4]
-        places.append(steamapps / "compatdata" / "548430" / "pfx" / "drive_c" / "users" /
-                      "steamuser" / "AppData" / "Local" / "FSD" / "Saved" / "Crashes")
-    except IndexError:
-        pass
+    pfx = proton.prefix_for(paks_dir)
+    if pfx is not None:
+        places.append(pfx / "drive_c" / "users" / "steamuser" / "AppData" / "Local" / "FSD" /
+                      "Saved" / "Crashes")
     return places
 
 

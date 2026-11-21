@@ -108,7 +108,7 @@ The counters under the list show how many mods are installed, pending and waitin
 - **Remove** takes the mod out of the active folder; it is deleted for good (cache included) only if no other folder has it. The same goes when deleting a folder.
 - The first time, all the mods you had end up in the "Default" folder.
 
-**Load order.** Drag a mod up or down the list (or select it and use Alt+Up / Alt+Down). When two mods change the same game file, the **higher one wins**. Karl writes the position into the pak name (`FSD-WindowsNoEditor_karl_<name>_<priority>_P.pak`): Unreal gives `_<N>_P.pak` paks priority 100·(N+1), so a higher number wins. Each folder has its own order; the game uses it after **Install and save** (or **Play**). New mods go to the bottom.
+**Load order.** The **#** column shows each mod's position: 1 is loaded first and has the highest priority. To move a mod, double-click its number (or right-click → **Load position…**) and type the new position: it works even while searching, so with many mods you can find a mod by name and send it straight where you want. You can also drag a mod up or down the list (or select it and use Alt+Up / Alt+Down). When two mods change the same game file, the **higher one wins**. Karl writes the position into the pak name (`FSD-WindowsNoEditor_karl_<name>_<priority>_P.pak`): Unreal gives `_<N>_P.pak` paks priority 100·(N+1), so a higher number wins. Each folder has its own order; the game uses it after **Install and save** (or **Play**). New mods go to the bottom.
 
 **Conflicts.** Karl reads the file list inside each enabled mod's .pak and marks with ⇄ the mods that change the same game files as another enabled mod. Select one to see, in the status bar, which mods it clashes with, how many files they share and which one wins with the current load order (the higher one). Move a mod up or down to change the winner.
 
@@ -118,7 +118,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Play without mods.** The button next to Play takes all of Karl's mods out of the game (they stay in your folders, nothing is deleted), starts DRG and waits: when you close the game, Karl puts the mods back by itself. If you close Karl meanwhile, the mods are put back the next time you open it.
 
-**Previous version.** When a mod updates, Karl keeps the previous version in its cache. If an update breaks something, select the mod and press **Previous version**: it goes back and stays locked (🔒 next to the version), so Install and save won't update it again. Pressing the same button again brings back the latest one.
+**Previous version.** When a mod updates, Karl keeps the previous version in its cache. If an update breaks something, select the mod and press **Previous version**: it goes back and stays locked (🔒 next to the version), so Install and save won't update it again. Pressing the same button again brings back the latest one. If Karl has no copy of the previous version (for example for a mod you just added), it downloads the file before the current one from mod.io.
 
 **Time machine.** Every time you press **Install and save** (also through Play or when switching folder) Karl takes a snapshot of the active folder: which mods it had, in what order, on or off and at which version. If nothing changed, no new snapshot is made. **🕘 Time machine** lists them by date, with a summary of what changed each time (mods added or removed, versions, switches, order). Pick a moment and press **Restore**: the folder goes back exactly as it was, even with mods you had removed meanwhile. Mods brought back to a different version stay locked (🔒) until you press **Previous version** to return to the latest one. Each version's .pak files are stored only once (`~/.cache/karl/istantanee/`) and Karl keeps the last 50 snapshots of each folder (a folder you use a lot doesn't erase the others' history; if you rename a folder, its history follows it).
 
@@ -128,9 +128,11 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Favorites and notes.** Click the ☆ at the right end of a row to add the mod to your favorites (★), click again to remove it. The **Show** drop-down above the list switches between all mods and favorites only (to change the load order, show all mods). Select a mod and press **Note…** to write a short note (for example "only with friends" or "breaks the HUD with X"): mods with a note show ✎ next to their name, and selecting one shows the note in the status bar.
 
-**Search, sorting and sizes.** The ⌕ box above the list filters the active folder as you type, by name, note or tag (Esc clears it). **Sort** orders the list by load order (the default), name, size, date added or last update, and the **Size** column shows how much space each mod takes. While the list is filtered or sorted by something other than load order, the load order can't be changed.
+**Search, sorting and sizes.** The ⌕ box above the list filters the active folder as you type, by name, note or tag (Esc clears it). **Sort** orders the list by load order (the default), name, size, date added or last update, and the **Size** column shows how much space each mod takes. While the list is filtered or sorted by something other than load order, mods can't be dragged, but you can still set their position from the **#** column.
 
-**Tags.** Select one or more mods and press **Tags…** to give them your own labels, separated by commas (for example `HUD, Audio, To try`). Tags show next to the name, the **Show** drop-down gets a *Tag: …* entry for each one, and the search finds them too. Tags travel with **Export configuration**.
+**Tags.** Select one or more mods and press **Tags…** (or right-click → **Tags…**) to give them your own labels, for example *HUD*, *Audio* or *To try*: tick the tags you already use or type a new one and press **Add**, so a typo never creates a duplicate tag. The ✕ next to a tag deletes it from every mod that uses it. Tags have their own **Tags** column, the **Show** drop-down gets a *Tag: …* entry for each one plus **Without tags** (handy to make sure every mod has one), and the search finds them too. Tags travel with **Export configuration**.
+
+**Right-click menu.** Right-click a mod (or a selection) for quick access to everything: turn on or off, favorite, load position, details, open on mod.io, previous version, note, tags and remove.
 
 **Drag and drop.** Drop `.pak` or `.zip` files, or mod.io links dragged from the browser, anywhere on Karl's window: they go into the *Mod links* box and Karl adds them right away.
 
@@ -152,7 +154,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Automatic checks.** In **Settings → Maintenance** you can have Karl check for updates of all your mods, in every folder, at every startup, and have Karl check for new versions of itself (see below).
 
-**Diagnostics and log.** **Settings → Diagnostics…** checks the game folder, write permissions, the mods (missing files, load order, required mods, conflicts, removed mods), other mod loaders, blueprint mod support, Proton and the mod.io connection, and lists the latest warnings from the log. **Copy** or **Save…** the report and attach it to an issue (the token is hidden). **Open log** opens `karl.log` directly.
+**Diagnostics and log.** **Settings → Diagnostics…** checks the game folder, write permissions, the mods (missing files, load order, required mods, conflicts, removed mods), other mod loaders, blueprint mod support, Proton and the mod.io connection, and lists the warnings and errors in the log since Karl was opened. **Copy** or **Save…** the report and attach it to an issue (the token is hidden). **Open log** opens `karl.log` directly.
 
 **Notification area.** With **Show Karl in the notification area** ticked (on by default), Karl's icon sits next to the clock: double-click it to bring Karl to the front, or right-click for **Play**, **Play without mods**, the folder list and **Quit Karl**. Tick **Closing the window keeps Karl in the notification area** to hide the window instead of quitting when you close it. On Linux the icon needs a desktop with a system tray (KDE, Cinnamon, XFCE; GNOME needs the AppIndicator extension).
 
@@ -160,7 +162,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Several game installations.** In **Settings → Game installation** press **Add…**, give it a name (for example *Steam Deck SD card* or *Second copy*) and pick its Paks folder with **Browse** or **Detect**. Choose an installation in the list and press **Save** to switch to it. Each installation has its own mod folders, load order, switches, time machine and downloaded files, so different versions of the same mod never get mixed up. With more than one installation, the active one is shown next to Karl's name at the top. **Remove** deletes Karl's data for an installation (not the mods already in that game folder); the active and the main installation can't be removed. Note that Steam's beta branches replace the game files in the same folder: a separate installation is useful when DRG really is in two places, for example on two drives or a copy of the game.
 
-**Interface size.** **Settings → Interface size** makes text, buttons, list rows and cards bigger: 100%, 125%, 150%, 175% or 200%. Handy on 4K screens and on the Steam Deck. Karl applies it after a restart and offers to restart right away.
+**Interface size.** **Settings → Interface size** makes text, buttons, list rows and cards bigger: 100%, 125%, 150%, 175% or 200%. Handy on 4K screens and on the Steam Deck. Karl applies it after a restart and offers to restart right away. **Compact mod list**, right below, makes only the rows of *My mods* shorter, so more mods fit on the screen.
 
 **Compact mode.** **Hide links** (above the list, or Ctrl+L) hides the *Mod links* box to give the list more room, handy on small screens and the Steam Deck. Karl remembers the choice; the box comes back by itself when you copy a link from Browse.
 
@@ -174,6 +176,7 @@ The counters under the list show how many mods are installed, pending and waitin
 | Ctrl+L | Hide or show the Mod links box |
 | Delete | Remove the selected mods |
 | Space | Turn the selected mods on or off |
+| Ctrl+A | Select all the mods in the list |
 | Alt+Up / Alt+Down | Move the selected mod in the load order |
 | Ctrl+Enter | Add the links in the box |
 | Esc | Clear the search |

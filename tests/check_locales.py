@@ -1,5 +1,4 @@
 import json
-import re
 import string
 import sys
 from pathlib import Path

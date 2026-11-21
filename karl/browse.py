@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import time
@@ -37,7 +38,6 @@ GAP = 8
 
 def apply_scale() -> None:
     global CARD_W, IMG_W, IMG_H, GAP
-    from .ui import px
     CARD_W = px(290)
     IMG_W, IMG_H = CARD_W, px(163)
     GAP = px(8)
@@ -201,11 +201,12 @@ class ThumbCache:
                            Image.LANCZOS)
             left, top = (im.width - tw) // 2, (im.height - th) // 2
             return ImageTk.PhotoImage(im.crop((left, top, left + tw, top + th)))
-        import base64
         return tk.PhotoImage(data=base64.b64encode(data))
 
 
 class ScrollFrame(tk.Frame):
+    wheel_owner: Optional["ScrollFrame"] = None
+
     def __init__(self, parent, bg: str, on_scroll: Optional[Callable[[float], None]] = None):
         super().__init__(parent, bg=bg)
         self.on_scroll = on_scroll
@@ -222,6 +223,7 @@ class ScrollFrame(tk.Frame):
                          lambda e: self.canvas.itemconfigure(self._win, width=e.width))
         self.canvas.bind("<Enter>", self._bind_wheel)
         self.canvas.bind("<Leave>", self._unbind_wheel)
+        self.bind("<Destroy>", lambda e: self._unbind_wheel() if e.widget is self else None)
 
     def _yview(self, *args):
         self.canvas.yview(*args)
@@ -232,11 +234,15 @@ class ScrollFrame(tk.Frame):
             self.on_scroll(float(last))
 
     def _bind_wheel(self, _e=None):
+        ScrollFrame.wheel_owner = self
         self.canvas.bind_all("<MouseWheel>", self._wheel)
         self.canvas.bind_all("<Button-4>", lambda e: self._scroll(-3))
         self.canvas.bind_all("<Button-5>", lambda e: self._scroll(3))
 
     def _unbind_wheel(self, _e=None):
+        if ScrollFrame.wheel_owner is not self:
+            return
+        ScrollFrame.wheel_owner = None
         self.canvas.unbind_all("<MouseWheel>")
         self.canvas.unbind_all("<Button-4>")
         self.canvas.unbind_all("<Button-5>")
@@ -267,9 +273,6 @@ class Choice:
         labels = self.labels()
         v = self.var.get()
         return self.keys[labels.index(v)] if v in labels else self.keys[0]
-
-    def set_key(self, key: str) -> None:
-        self.var.set(self.label(key))
 
 
 class ModCard(tk.Frame):

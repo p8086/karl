@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -272,6 +273,11 @@ class App(tk.Tk):
         if self._icons:
             self.iconphoto(True, *self._icons)
 
+    def apply_list_style(self):
+        compact = self.config_.compact_list
+        ttk.Style(self).configure("Mods.Treeview", rowheight=px(22 if compact else 25),
+                                  font=(FONT, 9 if compact else 10))
+
     def _style(self):
         s = ttk.Style(self)
         s.theme_use("clam")
@@ -298,6 +304,7 @@ class App(tk.Tk):
                     rowheight=px(28), borderwidth=0)
         s.configure("Treeview.Heading", background=BG, foreground=ACCENT, borderwidth=0)
         s.map("Treeview", background=[("selected", CHIP)])
+        self.apply_list_style()
         s.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=PANEL)
         s.configure("Vertical.TScrollbar", background=PANEL, troughcolor=BG, arrowcolor=MUTED,
                     bordercolor=BG)
@@ -923,14 +930,13 @@ class App(tk.Tk):
         self.rebuild_ui()
 
     def restart(self):
-        import subprocess
         if self.instance is not None:
             self.instance.close()
         cmd = [sys.executable] if getattr(sys, "frozen", False) else \
             [sys.executable, str(Path(sys.argv[0]).resolve())]
         try:
             subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, close_fds=True,
+                             stderr=subprocess.DEVNULL, close_fds=True, env=game.child_env(),
                              **({"start_new_session": True} if sys.platform != "win32" else {}))
         except OSError as err:
             self.show_error(str(err))
@@ -977,6 +983,7 @@ class App(tk.Tk):
         self.tray.refresh()
         if self.config_.logged_in:
             self.browse.start()
+
 
 def main():
     karl_log.setup()
