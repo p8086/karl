@@ -156,6 +156,7 @@
   "integ.missing": "ブループリントを使う Mod {n} 個は起動しません: Karl の統合がありません。",
   "integ.installing": "統合をインストールしています (UE4SS + KarlLoader)...",
   "integ.done": "統合をインストールしました: ブループリントを使う Mod {n} 個を Karl が起動します。",
+  "integ.button": "ブループリントMODのサポートをインストール",
   "official.found": "ゲームはまだ {n} 個の Mod を認識しているため、Mod 使用中と表示され、メニューも 0 になりません:\n{mods}\n\nKarl はこれを 0 にします。mod.io のサブスクライブを解除し、FSD\\Mods のフォルダーを FSD\\_karl_backup_mods に移動します(何も削除しません)。これらの Mod はすべて Karl に残り、Karl がインストールします。\n\n自作 Mod を FSD\\Mods にビルドしている場合は、今後は別のフォルダーにビルドし、「.pak ファイルを追加…」で追加してください。\n\n続行しますか?",
   "official.left": "ゲームはまだ {n} 個の Mod を認識しています: メニューは 0 にならず「mod」が表示されます。",
   "official.done": "完了: {n} 個の Mod をゲームの仕組みから外し、Karl に移しました。",

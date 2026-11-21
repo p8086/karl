@@ -156,6 +156,7 @@
   "integ.missing": "{n} 個藍圖模組將無法啟動:缺少 Karl 的整合。",
   "integ.installing": "正在安裝整合 (UE4SS + KarlLoader)...",
   "integ.done": "整合已安裝:Karl 將啟動 {n} 個藍圖模組。",
+  "integ.button": "安裝藍圖模組支援",
   "official.found": "遊戲仍然偵測到 {n} 個模組,因此會把你標記為使用模組,選單也不會顯示 0 個模組:\n{mods}\n\nKarl 會把它們歸零:取消 mod.io 上的訂閱,並把 FSD\\Mods 中的資料夾移到 FSD\\_karl_backup_mods(不會刪除任何內容)。這些模組都會保留在 Karl 中,由 Karl 安裝。\n\n如果你把自己的模組編譯到 FSD\\Mods,今後請編譯到其他資料夾,再用「新增 .pak 檔案…」新增。\n\n繼續嗎?",
   "official.left": "遊戲仍然偵測到 {n} 個模組:選單不會顯示 0,並會出現「mod」。",
   "official.done": "完成:已將 {n} 個模組移出遊戲系統並交給 Karl。",

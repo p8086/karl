@@ -81,7 +81,10 @@ class App(tk.Tk):
         self.apply_tray()
         self.setup_dnd()
 
-    def check_integration(self):
+    def check_integration(self, force: bool = False):
+        if self.busy:
+            self.after(300, lambda: self.check_integration(force))
+            return
         try:
             n = self.lib.needs_integration()
             first_launch = self.lib.waiting_first_launch()
@@ -92,7 +95,7 @@ class App(tk.Tk):
             messagebox.showinfo(APP_TITLE, tr("integ.proton_first_run"))
         if not n:
             return
-        if self.config_.ignore_integration:
+        if self.config_.ignore_integration and not force:
             self.set_status(tr("integ.missing", n=n))
             return
         if not messagebox.askyesno(APP_TITLE, tr("integ.ask", n=n)):
@@ -100,6 +103,15 @@ class App(tk.Tk):
             self.config_.save()
             self.set_status(tr("integ.missing", n=n))
             return
+        self.install_integration_now()
+
+    def install_integration_now(self):
+        if self.busy:
+            self.after(300, self.install_integration_now)
+            return
+        if self.config_.ignore_integration:
+            self.config_.ignore_integration = False
+            self.config_.save()
         self.run(tr("integ.installing"), self._install_integration)
 
     def _install_integration(self):

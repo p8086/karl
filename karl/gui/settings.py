@@ -148,6 +148,8 @@ class SettingsDialog(tk.Toplevel):
                    command=lambda: self.app.open_diagnostics(self)).pack(side="left")
         ttk.Button(tools2, text=tr("log.open"), command=self.app.open_log).pack(
             side="left", padx=(6, 0))
+        ttk.Button(tools2, text=tr("integ.button"), command=self.app.install_integration_now).pack(
+            side="left", padx=(6, 0))
 
     def _sync_karl_startup(self):
         self.karl_startup_check.configure(

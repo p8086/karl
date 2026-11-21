@@ -914,7 +914,7 @@ class MineTab(tk.Frame):
         if not report["failed"]:
             self.app.set_status(tr("mine.saved"))
         self.app.check_modio_subscriptions(force=True)
-        self.app.check_integration()
+        self.app.check_integration(force=True)
 
     def selected_ids(self) -> list[int]:
         return [int(i) for i in self.tree.selection()]

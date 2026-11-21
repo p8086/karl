@@ -156,6 +156,7 @@
   "integ.missing": "{n} moduri cu blueprinturi nu vor porni: lipsește integrarea lui Karl.",
   "integ.installing": "Instalez integrarea (UE4SS + KarlLoader)...",
   "integ.done": "Integrare instalată: Karl va porni {n} moduri cu blueprinturi.",
+  "integ.button": "Instalează suportul pentru moduri blueprint",
   "official.found": "Jocul încă vede {n} moduri, deci te marchează ca modat și meniul nu arată 0 moduri:\n{mods}\n\nKarl le aduce la zero: anulează abonamentele de pe mod.io și mută folderele din FSD\\Mods în FSD\\_karl_backup_mods (nu se șterge nimic). Toate aceste moduri rămân în Karl și le instalează el.\n\nDacă îți compilezi modul în FSD\\Mods, de acum compilează-l în alt folder și adaugă-l cu „Adaugă fișier .pak…”.\n\nContinui?",
   "official.left": "Jocul încă vede {n} moduri: meniul nu va arăta 0 și va apărea „mod”.",
   "official.done": "Gata: {n} moduri scoase din sistemul jocului și trecute la Karl.",

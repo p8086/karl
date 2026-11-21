@@ -156,6 +156,7 @@
   "integ.missing": "{n} blueprintes mod nem fog elindulni: hiányzik Karl integrációja.",
   "integ.installing": "Integráció telepítése (UE4SS + KarlLoader)...",
   "integ.done": "Integráció telepítve: Karl {n} blueprintes modot fog elindítani.",
+  "integ.button": "Blueprint modok támogatásának telepítése",
   "official.found": "A játék még mindig {n} modot lát, ezért moddoltként jelöl meg, és a menü nem 0 modot mutat:\n{mods}\n\nKarl lenullázza őket: törli a mod.io-feliratkozásokat, és áthelyezi az FSD\\Mods mappáit az FSD\\_karl_backup_mods mappába (semmi sem törlődik). Ezek a modok Karlban maradnak, és ő telepíti őket.\n\nHa a saját mododat az FSD\\Mods mappába fordítod, mostantól egy másik mappába fordítsd, és a „.pak fájl hozzáadása…” gombbal add hozzá.\n\nFolytatod?",
   "official.left": "A játék még mindig {n} modot lát: a menü nem 0-t fog mutatni, és megjelenik a „mod”.",
   "official.done": "Kész: {n} mod kikerült a játék rendszeréből és átkerült Karlhoz.",

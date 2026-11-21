@@ -156,6 +156,7 @@
   "integ.missing": "{n} 个蓝图模组将无法启动:缺少 Karl 的集成。",
   "integ.installing": "正在安装集成 (UE4SS + KarlLoader)...",
   "integ.done": "集成已安装:Karl 将启动 {n} 个蓝图模组。",
+  "integ.button": "安装蓝图模组支持",
   "official.found": "游戏仍然检测到 {n} 个模组,因此会把你标记为使用模组,菜单也不会显示 0 个模组:\n{mods}\n\nKarl 会把它们清零:取消 mod.io 上的订阅,并把 FSD\\Mods 中的文件夹移到 FSD\\_karl_backup_mods(不会删除任何内容)。这些模组都会保留在 Karl 中,由 Karl 安装。\n\n如果你把自己的模组编译到 FSD\\Mods,今后请编译到其他文件夹,再用“添加 .pak 文件…”添加。\n\n继续吗?",
   "official.left": "游戏仍然检测到 {n} 个模组:菜单不会显示 0,并会出现“mod”。",
   "official.done": "完成:已将 {n} 个模组移出游戏系统并交给 Karl。",

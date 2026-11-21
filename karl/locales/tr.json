@@ -156,6 +156,7 @@
   "integ.missing": "Blueprint içeren {n} mod başlamayacak: Karl'ın entegrasyonu eksik.",
   "integ.installing": "Entegrasyon kuruluyor (UE4SS + KarlLoader)...",
   "integ.done": "Entegrasyon kuruldu: Karl, blueprint içeren {n} modu başlatacak.",
+  "integ.button": "Blueprint mod desteğini yükle",
   "official.found": "Oyun hâlâ {n} mod görüyor; bu yüzden seni modlu olarak işaretliyor ve menüde 0 mod görünmüyor:\n{mods}\n\nKarl bunları sıfırlar: mod.io aboneliklerini kaldırır ve FSD\\Mods klasörlerini FSD\\_karl_backup_mods içine taşır (hiçbir şey silinmez). Bu modların hepsi Karl'da kalır ve onları Karl kurar.\n\nKendi modunu FSD\\Mods içine derliyorsan, bundan sonra başka bir klasöre derle ve «.pak dosyası ekle…» ile ekle.\n\nDevam edilsin mi?",
   "official.left": "Oyun hâlâ {n} mod görüyor: menüde 0 görünmeyecek ve «mod» yazısı çıkacak.",
   "official.done": "Tamam: {n} mod oyunun sisteminden çıkarıldı ve Karl'a aktarıldı.",

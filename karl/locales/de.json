@@ -156,6 +156,7 @@
   "integ.missing": "{n} Mods mit Blueprints starten nicht: Karls Integration fehlt.",
   "integ.installing": "Installiere die Integration (UE4SS + KarlLoader)...",
   "integ.done": "Integration installiert: {n} Mods mit Blueprints werden von Karl gestartet.",
+  "integ.button": "Unterstützung für Blueprint-Mods installieren",
   "official.found": "Das Spiel sieht noch {n} Mods, markiert dich daher als gemoddet und im Menü stehen nicht 0 Mods:\n{mods}\n\nKarl bringt sie auf null: Es entfernt die Abos auf mod.io und verschiebt die Ordner aus FSD\\Mods nach FSD\\_karl_backup_mods (nichts wird gelöscht). Alle diese Mods bleiben in Karl und Karl installiert sie.\n\nWenn du eine eigene Mod in FSD\\Mods baust, baue sie ab jetzt in einen anderen Ordner und füge sie mit „.pak-Datei hinzufügen…“ hinzu.\n\nFortfahren?",
   "official.left": "Das Spiel sieht noch {n} Mods: Im Menü steht nicht 0 und „mod“ erscheint.",
   "official.done": "Fertig: {n} Mods aus dem System des Spiels entfernt und an Karl übergeben.",

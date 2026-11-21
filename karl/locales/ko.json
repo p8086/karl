@@ -156,6 +156,7 @@
   "integ.missing": "블루프린트를 사용하는 모드 {n}개가 시작되지 않습니다: Karl 통합이 없습니다.",
   "integ.installing": "통합 설치 중 (UE4SS + KarlLoader)...",
   "integ.done": "통합 설치 완료: Karl이 블루프린트 모드 {n}개를 시작합니다.",
+  "integ.button": "블루프린트 모드 지원 설치",
   "official.found": "게임이 아직 모드 {n}개를 인식하고 있어 모드 사용자로 표시되고 메뉴에 0개가 표시되지 않습니다:\n{mods}\n\nKarl은 이를 0으로 만듭니다. mod.io 구독을 해제하고 FSD\\Mods 폴더를 FSD\\_karl_backup_mods로 옮깁니다(아무것도 삭제하지 않음). 이 모드들은 모두 Karl에 남고 Karl이 설치합니다.\n\n직접 만든 모드를 FSD\\Mods에 빌드하고 있다면 이제부터는 다른 폴더에 빌드하고 「.pak 파일 추가…」로 추가하세요.\n\n계속할까요?",
   "official.left": "게임이 아직 모드 {n}개를 인식합니다: 메뉴에 0이 표시되지 않고 「mod」가 나타납니다.",
   "official.done": "완료: 모드 {n}개를 게임 시스템에서 빼서 Karl로 옮겼습니다.",

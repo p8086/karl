@@ -442,6 +442,44 @@ class CheckboxTests(GuiBase):
         app.pool.shutdown(wait=True)
 
 
+class IntegrationAskTests(GuiBase):
+    def test_asks_again_after_decline(self):
+        app = gui.App()
+        pump(app)
+        installs = []
+        app.lib.needs_integration = lambda: 3
+        app.lib.waiting_first_launch = lambda: False
+        app.lib.install_integration = lambda log=None: installs.append(1) or 3
+        answers = []
+        old = gui.app.messagebox.askyesno
+        self.addCleanup(setattr, gui.app.messagebox, "askyesno", old)
+        gui.app.messagebox.askyesno = lambda *a, **k: answers.append(1) or False
+        app.check_integration()
+        self.assertTrue(app.config_.ignore_integration)
+        app.check_integration()
+        self.assertEqual(len(answers), 1)
+
+        gui.app.messagebox.askyesno = lambda *a, **k: answers.append(1) or True
+        app.busy = True
+        fake_tk.after_queue.clear()
+        app.check_integration(force=True)
+        self.assertEqual(len(answers), 1)
+        app.busy = False
+        fn, args = fake_tk.after_queue.pop(0)
+        fn(*args)
+        pump(app, 80)
+        self.assertEqual(len(answers), 2)
+        self.assertEqual(installs, [1])
+        self.assertFalse(app.config_.ignore_integration)
+
+        app.config_.ignore_integration = True
+        app.install_integration_now()
+        pump(app, 80)
+        self.assertEqual(installs, [1, 1])
+        self.assertFalse(Config.load().ignore_integration)
+        app.pool.shutdown(wait=True)
+
+
 class FolderTests(GuiBase):
     def test_folders_gui(self):
         FakeModio.subs = set()
