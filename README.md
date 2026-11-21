@@ -355,3 +355,7 @@ Karl is an unofficial fan project. It is not affiliated with, endorsed or sponso
 ## Logo
 
 The Karl logos were manually designed by Zoppone.
+
+## Testing
+
+Thanks to Cybo for testing Karl and helping find bugs.
