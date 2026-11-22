@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Diğer oyuncuların lobilerinde başlatma",
   "mine.online_mark": "çevrimiçi",
   "mine.online_done": "Karl bu modları diğer oyuncuların lobilerinde de başlatacak. Yalnızca oynanışı değiştirmeyen modlar için kullan.",
-  "mine.online_undone": "Bu modlar yalnızca sen host olduğunda başlar."
+  "mine.online_undone": "Bu modlar yalnızca sen host olduğunda başlar.",
+  "mine.close_game_first": "Yüklemeden veya kaydetmeden önce DRG'yi kapat: oyun mod dosyalarını kullanıyor, Karl bunları değiştiremez."
 }

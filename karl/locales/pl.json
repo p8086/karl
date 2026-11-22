@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Nie uruchamiaj w lobby innych graczy",
   "mine.online_mark": "online",
   "mine.online_done": "Karl uruchomi te mody także w lobby innych graczy. Używaj tego tylko dla modów, które nie zmieniają rozgrywki.",
-  "mine.online_undone": "Te mody uruchomią się tylko, gdy jesteś hostem."
+  "mine.online_undone": "Te mody uruchomią się tylko, gdy jesteś hostem.",
+  "mine.close_game_first": "Zamknij DRG przed instalacją lub zapisem: gra używa plików modów, więc Karl nie może ich zmienić."
 }

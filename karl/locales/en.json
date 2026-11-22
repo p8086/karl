@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Don't start in other players' lobbies",
   "mine.online_mark": "online",
   "mine.online_done": "Karl will start these mods in other players' lobbies too. Only use it for mods that don't change gameplay.",
-  "mine.online_undone": "These mods will only start when you host."
+  "mine.online_undone": "These mods will only start when you host.",
+  "mine.close_game_first": "Close DRG before installing or saving: the game is using the mod files, so Karl can't change them."
 }

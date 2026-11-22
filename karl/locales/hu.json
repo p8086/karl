@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Ne induljon mások lobbijában",
   "mine.online_mark": "online",
   "mine.online_done": "Karl ezeket a modokat mások lobbijában is elindítja. Csak olyan modokhoz használd, amelyek nem változtatják meg a játékmenetet.",
-  "mine.online_undone": "Ezek a modok csak akkor indulnak, ha te vagy a host."
+  "mine.online_undone": "Ezek a modok csak akkor indulnak, ha te vagy a host.",
+  "mine.close_game_first": "Telepítés vagy mentés előtt zárd be a DRG-t: a játék használja a modfájlokat, ezért Karl nem tudja módosítani őket."
 }

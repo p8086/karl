@@ -21,7 +21,7 @@ fake_tk.install()
 
 from PIL import Image
 
-from karl import browse, config, gui, i18n, modio, paths
+from karl import browse, config, game, gui, i18n, modio, paths
 from karl.browse import LIB_ALL, LIB_NOT_SUB, LIB_SUB, build_query
 from karl.config import Config
 from karl.library import Library
@@ -1323,6 +1323,20 @@ class FeatureTests(GuiBase):
                    if it and it["label"] == gui.app.tr("mine.ctx_position"))
         self.assertEqual(pos["state"], "disabled")
 
+    def test_install_blocked_while_game_runs(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        lib.add("https://mod.io/g/drg/m/mod-50")
+        mine.refresh()
+        mine.wanted[50] = False
+        self.messages().clear()
+        game.is_running = lambda: True
+        self.addCleanup(setattr, game, "is_running", lambda: False)
+        mine.apply_changes()
+        self.assertFalse(app.busy)
+        self.assertEqual(self.messages()[-1][2], gui.app.tr("mine.close_game_first"))
+        self.assertEqual(mine.wanted, {50: False})
+
     def test_online_switch_for_host_only_mods(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib
@@ -1602,6 +1616,7 @@ class FakeTrayModule:
 
 
 sys.modules["pystray"] = FakeTrayModule()
+game.is_running = lambda: False
 
 
 class BatchFourGuiTests(GuiBase):

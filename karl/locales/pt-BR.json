@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Não iniciar nas partidas de outros jogadores",
   "mine.online_mark": "online",
   "mine.online_done": "O Karl também vai iniciar esses mods nas partidas de outros jogadores. Use só para mods que não mudam a jogabilidade.",
-  "mine.online_undone": "Esses mods só vão iniciar quando você for o host."
+  "mine.online_undone": "Esses mods só vão iniciar quando você for o host.",
+  "mine.close_game_first": "Feche o DRG antes de instalar ou salvar: o jogo está usando os arquivos dos mods e o Karl não consegue alterá-los."
 }

@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "不在其他玩家的大廳中啟動",
   "mine.online_mark": "連線",
   "mine.online_done": "Karl 也會在其他玩家的大廳中啟動這些模組。僅用於不改變遊戲玩法的模組。",
-  "mine.online_undone": "這些模組只在你擔任主機時啟動。"
+  "mine.online_undone": "這些模組只在你擔任主機時啟動。",
+  "mine.close_game_first": "安裝或儲存前請關閉 DRG：遊戲正在使用模組檔案，Karl 無法修改它們。"
 }

@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Nicht in Lobbys anderer Spieler starten",
   "mine.online_mark": "online",
   "mine.online_done": "Karl startet diese Mods auch in Lobbys anderer Spieler. Nur für Mods verwenden, die das Gameplay nicht ändern.",
-  "mine.online_undone": "Diese Mods starten nur, wenn du hostest."
+  "mine.online_undone": "Diese Mods starten nur, wenn du hostest.",
+  "mine.close_game_first": "Schließe DRG vor dem Installieren oder Speichern: Das Spiel verwendet die Mod-Dateien, Karl kann sie nicht ändern."
 }

@@ -225,7 +225,7 @@ Karl offers to install it by itself when blueprint mods are enabled. If it finds
 
 Two things to keep in mind:
 
-- install and update mods **with the game closed**: Windows doesn't allow replacing files the game is using, and on Linux the running game would keep using the old version;
+- install and update mods **with the game closed**: Windows doesn't allow replacing files the game is using, and on Linux the running game would keep using the old version. Karl stops **Install and save** while DRG is open;
 - don't enable in the game's mod menu the same mods Karl installs, or they would be loaded twice.
 
 ### Multiplayer and the game's mod system

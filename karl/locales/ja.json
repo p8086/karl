@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "他のプレイヤーのロビーでは起動しない",
   "mine.online_mark": "オンライン",
   "mine.online_done": "他のプレイヤーのロビーでも Karl はこれらの MOD を起動します。ゲームプレイを変えない MOD にだけ使ってください。",
-  "mine.online_undone": "これらの MOD はホストのときだけ起動します。"
+  "mine.online_undone": "これらの MOD はホストのときだけ起動します。",
+  "mine.close_game_first": "インストールや保存の前に DRG を閉じてください。ゲームが MOD ファイルを使用中のため、Karl は変更できません。"
 }

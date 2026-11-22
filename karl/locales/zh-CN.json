@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "不在其他玩家的大厅中启动",
   "mine.online_mark": "联机",
   "mine.online_done": "Karl 也会在其他玩家的大厅中启动这些模组。仅用于不改变游戏玩法的模组。",
-  "mine.online_undone": "这些模组只在你担任主机时启动。"
+  "mine.online_undone": "这些模组只在你担任主机时启动。",
+  "mine.close_game_first": "安装或保存前请关闭 DRG：游戏正在使用模组文件，Karl 无法修改它们。"
 }

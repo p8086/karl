@@ -999,6 +999,11 @@ class MineTab(tk.Frame):
 
     def apply_changes(self):
         app = self.app
+        if app.busy:
+            return
+        if game.is_running():
+            app.show_error(tr("mine.close_game_first"))
+            return
         wanted = dict(self.wanted)
         newly_on = [i for i, on in wanted.items() if on]
 

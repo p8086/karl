@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Nu porni în lobby-urile altor jucători",
   "mine.online_mark": "online",
   "mine.online_done": "Karl va porni aceste moduri și în lobby-urile altor jucători. Folosește doar pentru moduri care nu schimbă gameplay-ul.",
-  "mine.online_undone": "Aceste moduri vor porni doar când ești gazdă."
+  "mine.online_undone": "Aceste moduri vor porni doar când ești gazdă.",
+  "mine.close_game_first": "Închide DRG înainte de a instala sau salva: jocul folosește fișierele modurilor, așa că Karl nu le poate modifica."
 }

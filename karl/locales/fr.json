@@ -447,5 +447,6 @@
   "mine.ctx_online_off": "Ne pas lancer dans les parties des autres",
   "mine.online_mark": "en ligne",
   "mine.online_done": "Karl lancera aussi ces mods dans les parties des autres joueurs. À utiliser seulement pour des mods qui ne changent pas le gameplay.",
-  "mine.online_undone": "Ces mods ne se lanceront que lorsque tu héberges."
+  "mine.online_undone": "Ces mods ne se lanceront que lorsque tu héberges.",
+  "mine.close_game_first": "Ferme DRG avant d'installer ou d'enregistrer : le jeu utilise les fichiers des mods, Karl ne peut pas les modifier."
 }
