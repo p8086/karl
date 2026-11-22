@@ -228,6 +228,16 @@ Two things to keep in mind:
 - install and update mods **with the game closed**: Windows doesn't allow replacing files the game is using, and on Linux the running game would keep using the old version;
 - don't enable in the game's mod menu the same mods Karl installs, or they would be loaded twice.
 
+### Multiplayer and the game's mod system
+
+Karl installs mods outside DRG's built-in mod menu, so **the game doesn't know which mods you are using**. This has some consequences worth knowing:
+
+- when you **host**, your lobby is **not marked as modded** in the server browser, even with *Approved* or *Sandbox* mods enabled;
+- *Sandbox* mods **don't turn off progression** as they do when you enable them from the game's menu;
+- when you **join someone else's lobby**, Karl only starts *Verified* mods (client-side, allowed everywhere) and your own `.pak` files. *Approved* and *Sandbox* mods stay off until you host again, so you never bring gameplay changes into another player's game.
+
+Please play fair: if you host with *Approved* or *Sandbox* mods enabled, use a **private or password-protected lobby**, or tell the other players. Players joining a public lobby expect the game as it is, and *Sandbox* mods are meant for single player or friends who agreed to them. Keep a folder with only *Verified* mods (**Duplicate** your folder and turn the others off) for public lobbies.
+
 **Adding your own .pak files.** For a mod that isn't on mod.io, for example one you are making, press **Add .pak file…** and pick one or more `.pak` or `.zip` files. You can also paste the file path into the box, even in quotes as Windows' "Copy as path" does. Karl copies the pak into the game folder as `Content\Paks\FSD-WindowsNoEditor_karl_file-<name>_P.pak` and shows it as *.pak file* in the Category column. When you rebuild the mod, add the same file again: Karl updates the existing mod instead of creating a new one.
 
 **Install and save** fixes the whole library, one mod at a time:
