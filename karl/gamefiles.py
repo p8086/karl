@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import game, integration, pakfile, paths, proton
-from .entry import ModEntry, approval_of
+from .entry import SOURCE_FILE, ModEntry, approval_of
 from .i18n import tr
 from .modio import ModioError, mod_name
 from .pakfile import PakError, init_classes
@@ -200,11 +200,34 @@ class GameFilesMixin:
                 names.append(e.name)
         return names
 
+    @staticmethod
+    def spawn_order(entries: list) -> list:
+        by_id = {e.mod_id: e for e in entries}
+        needed = {d["id"] for e in entries for d in e.deps or []
+                  if d.get("id") in by_id and d.get("id") != e.mod_id}
+        out: list = []
+        placed: set = set()
+        visiting: set = set()
+
+        def visit(e) -> None:
+            if e.mod_id in placed or e.mod_id in visiting:
+                return
+            visiting.add(e.mod_id)
+            for d in e.deps or []:
+                dep = by_id.get(d.get("id"))
+                if dep is not None:
+                    visit(dep)
+            visiting.discard(e.mod_id)
+            placed.add(e.mod_id)
+            out.append(e)
+
+        for e in sorted(entries, key=lambda m: (m.mod_id not in needed, m.name.lower())):
+            visit(e)
+        return out
+
     def blueprint_mods(self) -> list[tuple[str, dict]]:
         out = []
-        for e in sorted(self.mods.values(), key=lambda m: m.name.lower()):
-            if not e.enabled:
-                continue
+        for e in self.spawn_order([m for m in self.mods.values() if m.enabled]):
             classes: dict[str, list[str]] = {"spacerig": [], "cave": []}
             for name in e.installed_paks:
                 try:
@@ -214,6 +237,7 @@ class GameFilesMixin:
                 classes["spacerig"] += c["spacerig"]
                 classes["cave"] += c["cave"]
             if classes["spacerig"] or classes["cave"]:
+                classes["client"] = e.source == SOURCE_FILE or e.approval in ("", "Verified")
                 out.append((e.name, classes))
         return out
 
@@ -260,6 +284,7 @@ class GameFilesMixin:
         ue = integration.ue4ss_dir(integration.win64_dir(paks))
         if proton.needed():
             integration.proton_settings(ue / "UE4SS-settings.ini")
+        integration.update_loader(ue)
         return integration.write_mod_list(ue, self.blueprint_mods())
 
     def install_integration(self, fetch=None, log: Callable[[str], None] = lambda s: None) -> int:

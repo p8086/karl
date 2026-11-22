@@ -598,6 +598,10 @@ class MineTab(tk.Frame):
 
     def _launch(self):
         try:
+            self.lib.sync_loader()
+        except Exception as err:
+            self.app.log(f"KarlLoader: {err}")
+        try:
             game.launch()
         except Exception as err:
             self.app.show_error(str(err))

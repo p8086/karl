@@ -136,9 +136,11 @@ def _game_folder(lib: "Library", paks: Path, add) -> None:
         add(WARN, "Other mod loaders found: " + ", ".join(str(f.name) for f in foreign))
     st = integration.status(paks)
     add(OK if st == "ok" else WARN, f"Blueprint mod support (UE4SS + Karl loader): {st}")
+    ue = integration.ue4ss_dir(integration.win64_dir(paks))
+    if ue is not None:
+        _loader_log(ue, add)
     if not proton.needed():
         return
-    ue = integration.ue4ss_dir(integration.win64_dir(paks))
     if ue is not None:
         hooks = integration.proton_hooks_on(ue / "UE4SS-settings.ini")
         add(WARN if hooks else OK,
@@ -150,6 +152,24 @@ def _game_folder(lib: "Library", paks: Path, add) -> None:
         add(OK, "Proton: dwmapi override set")
     else:
         add(WARN, "Proton: dwmapi override missing")
+
+
+def _loader_log(ue: Path, add) -> None:
+    try:
+        lines = (ue / "UE4SS.log").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return
+    starts = [i for i, ln in enumerate(lines) if "[Karl] KarlLoader" in ln]
+    if not starts:
+        return
+    run = lines[starts[-1]:]
+    started = sum(1 for ln in run if "[Karl] avviata " in ln)
+    failed = sorted({ln.split("non riesco ad avviare", 1)[1].strip()
+                     for ln in run if "non riesco ad avviare" in ln})
+    msg = f"Karl loader (last game start): {started} blueprint(s) started"
+    if failed:
+        msg += ", not started: " + ", ".join(failed[:10])
+    add(WARN if failed else OK, msg)
 
 
 def _modio(lib: "Library", network: bool, add) -> None:

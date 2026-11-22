@@ -1,4 +1,4 @@
 APP_NAME = "karl"
 APP_TITLE = "Karl"
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 GITHUB_REPO = "p8086/karl"

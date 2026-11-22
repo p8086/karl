@@ -149,21 +149,30 @@ def install_loader(ue4ss: Path) -> Path:
     return mod
 
 
+def update_loader(ue4ss: Path) -> bool:
+    dest = ue4ss / "Mods" / LOADER_NAME / "Scripts" / "main.lua"
+    if not dest.is_file() or dest.read_bytes() == LOADER_SRC.read_bytes():
+        return False
+    shutil.copyfile(LOADER_SRC, dest)
+    return True
+
+
 def _lua_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def write_mod_list(ue4ss: Path, mods: Iterable[tuple[str, dict[str, list[str]]]]) -> int:
+def write_mod_list(ue4ss: Path, mods: Iterable[tuple[str, dict]]) -> int:
     rows = []
     seen: set[str] = set()
     for name, classes in mods:
+        client = "true" if classes.get("client", True) else "false"
         classes = {k: [c for c in classes.get(k, []) if c not in seen] for k in ("spacerig", "cave")}
         seen.update(classes["spacerig"] + classes["cave"])
         if not classes.get("spacerig") and not classes.get("cave"):
             continue
         sr = ", ".join(_lua_str(c) for c in classes.get("spacerig", []))
         cv = ", ".join(_lua_str(c) for c in classes.get("cave", []))
-        rows.append(f"  {{ name = {_lua_str(name)}, spacerig = {{ {sr} }}, cave = {{ {cv} }} }},")
+        rows.append(f"  {{ name = {_lua_str(name)}, client = {client}, spacerig = {{ {sr} }}, cave = {{ {cv} }} }},")
     path = ue4ss / "Mods" / LOADER_NAME / "Scripts" / "karl_mods.lua"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("return {\n"

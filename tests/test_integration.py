@@ -136,6 +136,7 @@ class IntegrationTests(unittest.TestCase):
         lua = (ue / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
         self.assertIn('"/Game/HUD/InitCave.InitCave_C"', lua)
         self.assertIn('"/Game/HUD/InitSpacerig.InitSpacerig_C"', lua)
+        self.assertIn('name = "hud", client = true,', lua.replace("hud.pak", "hud"))
         self.assertNotIn("Tex", lua)
         self.assertEqual(lib.needs_integration(), 0)
         self.assertEqual(lib.foreign_loader_files(), [])
@@ -145,6 +146,68 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("HUD", lua)
         lib.install_integration(fetch=lambda u: self.fail("non deve riscaricare"))
         self.assertEqual((ue / "Mods" / "mods.txt").read_text().count("KarlLoader"), 1)
+
+    def test_spawn_order_puts_libraries_first(self):
+        from karl.entry import ModEntry
+        def entry(i, name, deps=None):
+            return ModEntry(mod_id=i, game_id=1, name=name, slug="", url="", deps=[{"id": d} for d in deps] if deps is not None else None)
+        mods = [entry(1, "A HUD", [3]), entry(2, "B Tool", [4]), entry(3, "Mod Hub", [5]),
+                entry(4, "Z Lib"), entry(5, "DRGLib", []), entry(6, "C Plain"), entry(7, "Loop", [8]),
+                entry(8, "Loop2", [7])]
+        names = [e.name for e in Library.spawn_order(mods)]
+        self.assertEqual(len(names), len(mods))
+        for lib_name, user in (("Mod Hub", "A HUD"), ("DRGLib", "Mod Hub"), ("Z Lib", "B Tool")):
+            self.assertLess(names.index(lib_name), names.index(user))
+        self.assertLess(names.index("Mod Hub"), names.index("C Plain"))
+        self.assertLess(names.index("Z Lib"), names.index("C Plain"))
+
+    def test_mod_list_marks_host_only_mods(self):
+        ue = self.root / "ue"
+        n = integration.write_mod_list(ue, [
+            ("Hub", {"spacerig": ["/Game/Hub/InitSpacerig.InitSpacerig_C"], "cave": [], "client": True}),
+            ("Selector", {"spacerig": [], "cave": ["/Game/Sel/InitCave.InitCave_C"], "client": False}),
+            ("Old", {"spacerig": ["/Game/Old/InitSpacerig.InitSpacerig_C"], "cave": []})])
+        self.assertEqual(n, 3)
+        lua = (ue / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
+        self.assertIn('name = "Hub", client = true,', lua)
+        self.assertIn('name = "Selector", client = false,', lua)
+        self.assertIn('name = "Old", client = true,', lua)
+
+    def test_loader_script_is_updated(self):
+        lib = Library(Config(paks_dir=str(self.paks)))
+        src = self.root / "src"
+        src.mkdir()
+        (src / "hud.pak").write_bytes(make_pak("../../../FSD/Content/HUD/", {"/": ["InitCave.uasset"]}))
+        lib.add_local_file(str(src / "hud.pak"))
+        lib.install_integration(fetch=fake_fetch)
+        script = self.win64 / "ue4ss" / "Mods" / "KarlLoader" / "Scripts" / "main.lua"
+        script.write_text('local VERSION = "2.0"\n', encoding="utf-8")
+        self.assertEqual(lib.sync_loader(), 1)
+        self.assertEqual(script.read_bytes(), integration.LOADER_SRC.read_bytes())
+        self.assertFalse(integration.update_loader(self.win64 / "ue4ss"))
+        text = script.read_text(encoding="utf-8")
+        self.assertIn("ExecuteWithDelay", text)
+        self.assertNotIn("on_player_ready", text)
+
+    def test_diagnostics_reads_loader_log(self):
+        from karl import diagnostics
+        ue = self.root / "ue"
+        ue.mkdir()
+        out = []
+        add = lambda level, msg: out.append((level, msg))
+        diagnostics._loader_log(ue, add)
+        self.assertEqual(out, [])
+        (ue / "UE4SS.log").write_text(
+            "[Lua] [Karl] KarlLoader 2.0: 2 mod con blueprint\n"
+            "[Lua] [Karl] non riesco ad avviare Old (/Game/Old/X.X_C)\n"
+            "[Lua] [Karl] KarlLoader 2.1: 2 mod con blueprint\n"
+            "[Lua] [Karl] avviata Mod Hub (/Game/Hub/InitSpacerig.InitSpacerig_C)\n"
+            "[Lua] [Karl] non riesco ad avviare Secondary (/Game/Sec/InitCave.InitCave_C)\n"
+            "[Lua] [Karl] non riesco ad avviare Secondary (/Game/Sec/InitCave.InitCave_C)\n",
+            encoding="utf-8")
+        diagnostics._loader_log(ue, add)
+        self.assertEqual(out, [(diagnostics.WARN, "Karl loader (last game start): 1 blueprint(s) started, "
+                                "not started: Secondary (/Game/Sec/InitCave.InitCave_C)")])
 
     def test_hide_asset_registry(self):
         import hashlib

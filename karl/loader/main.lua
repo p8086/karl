@@ -1,5 +1,9 @@
-local VERSION = "2.0"
+local VERSION = "2.1"
 local UEHelpers = require("UEHelpers")
+
+local FIRST_DELAY = 1500
+local RETRY_DELAY = 2000
+local MAX_TRIES = 6
 
 local function log(msg)
     print("[Karl] " .. tostring(msg) .. "\n")
@@ -40,78 +44,125 @@ local function find_class(path)
     end
     local h = helpers()
     if not h or not h:IsValid() then
-        log("AssetRegistryHelpers non disponibile")
         return nil
     end
     local package, name = path:match("^(.-)%.(.+)$")
-    local ok, result = pcall(function()
+    local okGet, result = pcall(function()
         return h:GetAsset({
             ["ObjectPath"] = UEHelpers.FindOrAddFName(path),
             ["PackageName"] = UEHelpers.FindOrAddFName(package),
             ["AssetName"] = UEHelpers.FindOrAddFName(name),
         })
     end)
-    if not ok then
-        log("errore caricando " .. path .. ": " .. tostring(result))
-        return nil
-    end
-    if result and result:IsValid() then
+    if okGet and result and result:IsValid() then
         return result
     end
     return nil
 end
 
-local done = {}
+local function role(world)
+    local okRole, server = pcall(function()
+        local ksl = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
+        return ksl:IsServer(world)
+    end)
+    if not okRole then
+        return "?"
+    end
+    return server and "host" or "client"
+end
 
-local function spawn_mods(world)
+local worlds = {}
+local schedule
+
+local function attempt(key, st)
+    if worlds[key] ~= st then
+        return
+    end
+    local world = st.world
+    if not world or not world:IsValid() then
+        worlds[key] = nil
+        return
+    end
+    st.tries = st.tries + 1
+    local who = role(world)
+    local started, skipped, missing = 0, 0, {}
+    for _, mod in ipairs(MODS) do
+        local allowed = who ~= "client" or mod.client ~= false
+        for _, path in ipairs(mod[st.kind] or {}) do
+            if not allowed then
+                skipped = skipped + 1
+            elseif not st.spawned[path] then
+                local cls = find_class(path)
+                local actor = nil
+                if cls then
+                    local okSpawn, result = pcall(function()
+                        return world:SpawnActor(cls, {}, {})
+                    end)
+                    if okSpawn then
+                        actor = result
+                    end
+                end
+                if actor and actor:IsValid() then
+                    st.spawned[path] = true
+                    st.mark = st.mark or actor
+                    started = started + 1
+                    log("avviata " .. tostring(mod.name) .. " (" .. path .. ")")
+                else
+                    table.insert(missing, tostring(mod.name) .. " (" .. path .. ")")
+                end
+            end
+        end
+    end
+    log(string.format("%s, %s, tentativo %d: avviate %d, in attesa %d, saltate %d (non Verified nella lobby di un altro)",
+        st.kind, who, st.tries, started, #missing, skipped))
+    if #missing == 0 then
+        return
+    end
+    if st.tries < MAX_TRIES then
+        schedule(key, st, RETRY_DELAY)
+        return
+    end
+    for _, m in ipairs(missing) do
+        log("non riesco ad avviare " .. m)
+    end
+end
+
+schedule = function(key, st, delay)
+    ExecuteWithDelay(delay, function()
+        ExecuteInGameThread(function()
+            local okRun, err = pcall(attempt, key, st)
+            if not okRun then
+                log("errore: " .. tostring(err))
+            end
+        end)
+    end)
+end
+
+local function start(world, fresh)
+    if not world or not world:IsValid() then
+        return
+    end
     local kind = map_kind(world)
     if not kind then
         return
     end
-    local key = string.format("%s|%s", kind, tostring(world:GetAddress()))
-    local mark = done[key]
-    if mark and mark:IsValid() then
+    local key = kind .. "|" .. tostring(world:GetAddress())
+    local old = worlds[key]
+    if old and not fresh and (old.mark == nil or old.mark:IsValid()) then
         return
     end
-    local count = 0
-    for _, mod in ipairs(MODS) do
-        for _, path in ipairs(mod[kind] or {}) do
-            local cls = find_class(path)
-            if cls then
-                local okSpawn, actor = pcall(function()
-                    return world:SpawnActor(cls, {}, {})
-                end)
-                if okSpawn and actor and actor:IsValid() then
-                    count = count + 1
-                    done[key] = done[key] or actor
-                else
-                    log("non riesco a creare " .. path)
-                end
-            else
-                log("blueprint non trovato: " .. path .. " (" .. tostring(mod.name) .. ")")
-            end
-        end
-    end
-    log(string.format("%s: avviate %d mod", kind, count))
-end
-
-local function on_player_ready(controller)
-    if not controller or not controller:IsValid() then
-        return
-    end
-    local world = controller:GetWorld()
-    if world and world:IsValid() then
-        spawn_mods(world)
-    end
+    local st = { world = world, kind = kind, spawned = {}, tries = 0 }
+    worlds[key] = st
+    schedule(key, st, FIRST_DELAY)
 end
 
 RegisterLoadMapPostHook(function(engine, world)
-    local w = world:get()
-    if w and w:IsValid() then
-        spawn_mods(w)
-    end
+    start(world:get(), true)
 end)
 
 RegisterHook("/Script/Engine.PlayerController:ClientRestart", function(ctx)
-    on_player_ready(ctx:get())
+    local controller = ctx:get()
+    if controller and controller:IsValid() then
+        start(controller:GetWorld(), false)
+    end
 end)
