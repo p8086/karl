@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import sys
 import tempfile
 from datetime import datetime
@@ -123,9 +124,13 @@ def _requirements(lib: "Library", add) -> None:
         add(OK, "Required mods: nothing missing")
     clashes = lib.conflicts()
     if clashes:
-        pairs = sorted({tuple(sorted((i, c["id"]))) for i, cs in clashes.items() for c in cs})
-        add(WARN, f"Conflicts: {len(pairs)} pair(s) of mods change the same files: " + "; ".join(
-            f"{lib.mods[a].name} / {lib.mods[b].name}" for a, b in pairs[:10]))
+        pairs = sorted({(c["winner"], i if c["winner"] != i else c["id"], c["files"])
+                        for i, cs in clashes.items() for c in cs},
+                       key=lambda p: (lib.mods[p[0]].name.lower(), lib.mods[p[1]].name.lower()))
+        add(WARN, f"Conflicts: {len(pairs)} pair(s) of mods change the same files, only the higher one"
+                  " in the list works for those files: " + "; ".join(
+            f"{lib.mods[w].name} wins over {lib.mods[l].name} ({n} files)" for w, l, n in pairs[:15])
+            + (f"; and {len(pairs) - 15} more" if len(pairs) > 15 else ""))
     else:
         add(OK, "Conflicts: none")
 
@@ -154,6 +159,9 @@ def _game_folder(lib: "Library", paks: Path, add) -> None:
         add(WARN, "Proton: dwmapi override missing")
 
 
+SLOW_START_MS = 3000
+
+
 def _loader_log(ue: Path, add) -> None:
     try:
         lines = (ue / "UE4SS.log").read_text(encoding="utf-8", errors="replace").splitlines()
@@ -170,6 +178,25 @@ def _loader_log(ue: Path, add) -> None:
     if failed:
         msg += ", not started: " + ", ".join(failed[:10])
     add(WARN if failed else OK, msg)
+    totals, frozen = [], [0]
+    for ln in run:
+        m = re.search(r", ([^,]+), tentativo \d+:.*, (\d+) ms$", ln)
+        if m:
+            totals.append(int(m.group(2)))
+            if "anticipo" not in m.group(1):
+                frozen.append(int(m.group(2)))
+    if not totals:
+        return
+    slow: dict[str, int] = {}
+    for ln in run:
+        m = re.search(r"\[Karl\] avviata (.+) \(/.*\) in (\d+) ms$", ln)
+        if m:
+            slow[m.group(1)] = max(slow.get(m.group(1), 0), int(m.group(2)))
+    top = sorted(slow.items(), key=lambda kv: -kv[1])[:5]
+    msg = f"Karl loader: longest start {max(totals)} ms, game frozen up to {max(frozen)} ms"
+    if top:
+        msg += "; slowest mods: " + ", ".join(f"{n} {t} ms" for n, t in top)
+    add(WARN if max(frozen) >= SLOW_START_MS else OK, msg)
 
 
 def _modio(lib: "Library", network: bool, add) -> None:

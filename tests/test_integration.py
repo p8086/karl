@@ -205,10 +205,10 @@ class IntegrationTests(unittest.TestCase):
         text = script.read_text(encoding="utf-8")
         self.assertIn("ExecuteWithDelay", text)
         self.assertNotIn("on_player_ready", text)
-        start = text[text.index("local function start("):text.index("RegisterLoadMapPostHook")]
-        self.assertIn("pcall(attempt, key, st)", start)
-        self.assertNotIn("schedule(", start)
+        start = text[text.index("local function start("):text.index("local function early(")]
+        self.assertIn("if not run(key, st) then", start)
         self.assertNotIn("ExecuteWithDelay", start)
+        self.assertIn("NotifyOnNewObject", text)
 
     def test_diagnostics_reads_loader_log(self):
         from karl import diagnostics
@@ -237,6 +237,31 @@ class IntegrationTests(unittest.TestCase):
             encoding="utf-8")
         diagnostics._loader_log(ue, add)
         self.assertEqual(out, [(diagnostics.OK, "Karl loader (last game start): 1 blueprint(s) started")])
+        out.clear()
+        (ue / "UE4SS.log").write_text(
+            "[Lua] [Karl] KarlLoader 2.3: 2 mod con blueprint\n"
+            "[Lua] [Karl] avviata Hub (/Game/Hub/InitCave.InitCave_C) in 120 ms\n"
+            "[Lua] [Karl] avviata Big (/Game/Big/InitCave.InitCave_C) in 4100 ms\n"
+            "[Lua] [Karl] cave, client, ClientRestart, tentativo 1: avviate 2, in attesa 0, saltate 0"
+            " (non Verified nella lobby di un altro), 4300 ms\n"
+            "[Lua] [Karl] avviata Hub (/Game/Hub/InitSpacerig.InitSpacerig_C) in 90 ms\n"
+            "[Lua] [Karl] spacerig, host, ClientRestart, tentativo 1: avviate 1, in attesa 0, saltate 0"
+            " (non Verified nella lobby di un altro), 95 ms\n",
+            encoding="utf-8")
+        diagnostics._loader_log(ue, add)
+        self.assertEqual(out[0], (diagnostics.OK, "Karl loader (last game start): 3 blueprint(s) started"))
+        self.assertEqual(out[1], (diagnostics.WARN, "Karl loader: longest start 4300 ms, game frozen up to 4300 ms;"
+                                                    " slowest mods: Big 4100 ms, Hub 120 ms"))
+        out.clear()
+        (ue / "UE4SS.log").write_text(
+            "[Lua] [Karl] KarlLoader 2.4: 1 mod con blueprint\n"
+            "[Lua] [Karl] avviata Big (/Game/Big/InitCave.InitCave_C) in 40 ms\n"
+            "[Lua] [Karl] cave, client, anticipo, tentativo 1: avviate 90, in attesa 0, saltate 0"
+            " (non Verified nella lobby di un altro), 6000 ms\n",
+            encoding="utf-8")
+        diagnostics._loader_log(ue, add)
+        self.assertEqual(out[1], (diagnostics.OK, "Karl loader: longest start 6000 ms, game frozen up to 0 ms;"
+                                                  " slowest mods: Big 40 ms"))
 
     def test_hide_asset_registry(self):
         import hashlib

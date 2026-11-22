@@ -831,6 +831,12 @@ class ConflictAndUpdateTests(unittest.TestCase):
         self.lib.set_order([b, a, c])
         self.assertEqual(self.lib.conflicts()[a][0]["winner"], b)
         self.assertEqual(self.lib.conflicts({b: False}), {})
+        from karl import diagnostics
+        out = []
+        diagnostics._requirements(self.lib, lambda level, msg: out.append((level, msg)))
+        self.assertEqual(out[-1][0], diagnostics.WARN)
+        self.assertIn("beta.pak wins over alfa.pak (1 files)", out[-1][1].replace(self.lib.mods[b].name, "beta.pak")
+                      .replace(self.lib.mods[a].name, "alfa.pak"))
 
     def test_latest_release_and_prepare(self):
         import json as _json
