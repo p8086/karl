@@ -9,11 +9,11 @@
 Get the latest version from the **Releases** page. No Python needed.
 
 - **Windows:** download `Karl.exe` and run it. It is a single file: put it wherever you like. On first launch Windows SmartScreen may say "Windows protected your PC" because the executable is not signed: click **More info → Run anyway**.
-- **Linux / Steam Deck:** download `karl-linux-x86_64.tar.gz`, extract it and run `./install.sh` from the `karl` folder. Karl then shows up in your applications menu. You can also run `./karl` directly.
+- **Linux:** download `karl-linux-x86_64.tar.gz`, extract it and run `./install.sh` from the `karl` folder. Karl then shows up in your applications menu. You can also run `./karl` directly.
 
 ## Install from source
 
-Karl runs on **Windows** and on **Linux** (Steam Deck included), where DRG runs through Proton.
+Karl runs on **Windows** and on **Linux**, where DRG runs through Proton.
 
 **Windows**
 
@@ -160,11 +160,11 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Updating Karl.** At the bottom right, next to the progress bar, there is a **GitHub ↗** link to this page. If **Show the Karl update icon** is ticked in **Settings → Maintenance**, the ⟳ update icon appears next to it. With **Check for new versions of Karl at every startup** also ticked, Karl checks GitHub each time it opens; untick it and Karl checks only when you click the icon. When a new version is out the icon becomes **⟳ !**. Click it and Karl updates itself: it downloads the new `Karl.exe` (or the Linux binary) from the latest release, replaces the old one and restarts. With no update pending, clicking ⟳ checks again right away. If you run Karl from the source code, the icon opens the releases page instead (update with `git pull`). Untick **Show the Karl update icon** to hide the icon and stop every check.
 
-**Several game installations.** In **Settings → Game installation** press **Add…**, give it a name (for example *Steam Deck SD card* or *Second copy*) and pick its Paks folder with **Browse** or **Detect**. Choose an installation in the list and press **Save** to switch to it. Each installation has its own mod folders, load order, switches, time machine and downloaded files, so different versions of the same mod never get mixed up. With more than one installation, the active one is shown next to Karl's name at the top. **Remove** deletes Karl's data for an installation (not the mods already in that game folder); the active and the main installation can't be removed. Note that Steam's beta branches replace the game files in the same folder: a separate installation is useful when DRG really is in two places, for example on two drives or a copy of the game.
+**Several game installations.** In **Settings → Game installation** press **Add…**, give it a name (for example *SD card* or *Second copy*) and pick its Paks folder with **Browse** or **Detect**. Choose an installation in the list and press **Save** to switch to it. Each installation has its own mod folders, load order, switches, time machine and downloaded files, so different versions of the same mod never get mixed up. With more than one installation, the active one is shown next to Karl's name at the top. **Remove** deletes Karl's data for an installation (not the mods already in that game folder); the active and the main installation can't be removed. Note that Steam's beta branches replace the game files in the same folder: a separate installation is useful when DRG really is in two places, for example on two drives or a copy of the game.
 
-**Interface size.** **Settings → Interface size** makes text, buttons, list rows and cards bigger: 100%, 125%, 150%, 175% or 200%. Handy on 4K screens and on the Steam Deck. Karl applies it after a restart and offers to restart right away. **Compact mod list**, right below, makes only the rows of *My mods* shorter, so more mods fit on the screen.
+**Interface size.** **Settings → Interface size** makes text, buttons, list rows and cards bigger: 100%, 125%, 150%, 175% or 200%. Handy on 4K screens. Karl applies it after a restart and offers to restart right away. **Compact mod list**, right below, makes only the rows of *My mods* shorter, so more mods fit on the screen.
 
-**Compact mode.** **Hide links** (above the list, or Ctrl+L) hides the *Mod links* box to give the list more room, handy on small screens and the Steam Deck. Karl remembers the choice; the box comes back by itself when you copy a link from Browse.
+**Compact mode.** **Hide links** (above the list, or Ctrl+L) hides the *Mod links* box to give the list more room, handy on small screens. Karl remembers the choice; the box comes back by itself when you copy a link from Browse.
 
 **Keyboard shortcuts.**
 
@@ -333,7 +333,7 @@ Karl's data stays in `~/.config/karl`.
 
 Found a bug or have an idea? Open an issue on the **Issues** page of the repository. To help track it down, include:
 
-- your system (Windows or Linux, which distribution / Steam Deck) and Karl's version;
+- your system (Windows or Linux, which distribution) and Karl's version;
 - what you did, what you expected and what happened instead;
 - the error message or a screenshot, if any;
 - Karl's log file, `~/.cache/karl/karl.log` (on Windows `C:\Users\<you>\.cache\karl\karl.log`);
