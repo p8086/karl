@@ -442,5 +442,10 @@
   "hist.crash": "DRG çöktü {text}",
   "hist.session_ok": "Sorunsuz oynandı",
   "hist.culprit": "Sorunlu mod bulundu: {name}",
-  "hist.bisect": "Sorunlu mod araması başladı ({text} mod)"
+  "hist.bisect": "Sorunlu mod araması başladı ({text} mod)",
+  "mine.ctx_online_on": "Diğer oyuncuların lobilerinde başlat",
+  "mine.ctx_online_off": "Diğer oyuncuların lobilerinde başlatma",
+  "mine.online_mark": "çevrimiçi",
+  "mine.online_done": "Karl bu modları diğer oyuncuların lobilerinde de başlatacak. Yalnızca oynanışı değiştirmeyen modlar için kullan.",
+  "mine.online_undone": "Bu modlar yalnızca sen host olduğunda başlar."
 }

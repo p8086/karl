@@ -1323,6 +1323,37 @@ class FeatureTests(GuiBase):
                    if it and it["label"] == gui.app.tr("mine.ctx_position"))
         self.assertEqual(pos["state"], "disabled")
 
+    def test_online_switch_for_host_only_mods(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        for i in (40, 41):
+            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
+        lib.mods[40].approval = "Verified"
+        lib.mods[41].approval = "Approved"
+        mine.refresh()
+        ev = types.SimpleNamespace(x=1, y=1, x_root=1, y_root=1)
+        tr = gui.app.tr
+
+        def item(key):
+            return next((it for it in mine._menu.items if it and it["label"] == tr(key)), None)
+
+        mine.tree.__dict__["_hit"] = ("cell", "#2", "40")
+        mine._on_right_click(ev)
+        self.assertEqual(item("mine.ctx_online_on")["state"], "disabled")
+        mine.tree.selection_set(["40", "41"])
+        mine.tree.__dict__["_hit"] = ("cell", "#2", "41")
+        mine._on_right_click(ev)
+        item("mine.ctx_online_on")["command"]()
+        self.assertTrue(lib.mods[41].online)
+        self.assertFalse(lib.mods[40].online)
+        self.assertEqual(mine.tree._rows["41"][5], "Approved · " + tr("mine.online_mark"))
+        self.assertEqual(mine.tree._rows["40"][5], "Verified")
+        self.assertEqual(app.status.get(), tr("mine.online_done"))
+        mine._on_right_click(ev)
+        item("mine.ctx_online_off")["command"]()
+        self.assertFalse(lib.mods[41].online)
+        self.assertEqual(mine.tree._rows["41"][5], "Approved")
+
     def test_details_from_my_mods_and_browse(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib

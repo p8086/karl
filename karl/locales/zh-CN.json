@@ -442,5 +442,10 @@
   "hist.crash": "DRG 崩溃 {text}",
   "hist.session_ok": "正常游玩",
   "hist.culprit": "找到问题模组:{name}",
-  "hist.bisect": "开始查找问题模组({text} 个)"
+  "hist.bisect": "开始查找问题模组({text} 个)",
+  "mine.ctx_online_on": "在其他玩家的大厅中也启动",
+  "mine.ctx_online_off": "不在其他玩家的大厅中启动",
+  "mine.online_mark": "联机",
+  "mine.online_done": "Karl 也会在其他玩家的大厅中启动这些模组。仅用于不改变游戏玩法的模组。",
+  "mine.online_undone": "这些模组只在你担任主机时启动。"
 }

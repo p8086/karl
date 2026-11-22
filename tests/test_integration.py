@@ -173,6 +173,23 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('name = "Selector", client = false,', lua)
         self.assertIn('name = "Old", client = true,', lua)
 
+    def test_online_switch_changes_client_flag(self):
+        lib = Library(Config(paks_dir=str(self.paks)))
+        src = self.root / "src"
+        src.mkdir()
+        (src / "sel.pak").write_bytes(make_pak("../../../FSD/Content/Sel/", {"/": ["InitCave.uasset"]}))
+        e = lib.add_local_file(str(src / "sel.pak"))
+        lib.install_integration(fetch=fake_fetch)
+        lua = lambda: (self.win64 / "ue4ss" / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
+        self.assertIsNone(lib.set_online([e.mod_id]))
+        e.source, e.approval = "modio", "Approved"
+        lib.sync_loader()
+        self.assertIn("client = false", lua())
+        self.assertTrue(lib.set_online([e.mod_id]))
+        self.assertIn("client = true", lua())
+        self.assertFalse(lib.set_online([e.mod_id]))
+        self.assertIn("client = false", lua())
+
     def test_loader_script_is_updated(self):
         lib = Library(Config(paks_dir=str(self.paks)))
         src = self.root / "src"

@@ -442,5 +442,10 @@
   "hist.crash": "A DRG összeomlott {text}",
   "hist.session_ok": "Hibátlan játék",
   "hist.culprit": "Problémás mod megtalálva: {name}",
-  "hist.bisect": "Problémás mod keresése elindítva ({text} mod)"
+  "hist.bisect": "Problémás mod keresése elindítva ({text} mod)",
+  "mine.ctx_online_on": "Indítás mások lobbijában",
+  "mine.ctx_online_off": "Ne induljon mások lobbijában",
+  "mine.online_mark": "online",
+  "mine.online_done": "Karl ezeket a modokat mások lobbijában is elindítja. Csak olyan modokhoz használd, amelyek nem változtatják meg a játékmenetet.",
+  "mine.online_undone": "Ezek a modok csak akkor indulnak, ha te vagy a host."
 }

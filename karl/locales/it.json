@@ -442,5 +442,10 @@
   "hist.crash": "DRG è crashato {text}",
   "hist.session_ok": "Partita senza problemi",
   "hist.culprit": "Mod problematica trovata: {name}",
-  "hist.bisect": "Iniziata la ricerca della mod problematica ({text} mod)"
+  "hist.bisect": "Iniziata la ricerca della mod problematica ({text} mod)",
+  "mine.ctx_online_on": "Avvia nelle lobby degli altri",
+  "mine.ctx_online_off": "Non avviare nelle lobby degli altri",
+  "mine.online_mark": "online",
+  "mine.online_done": "Karl avvierà queste mod anche nelle lobby degli altri. Usalo solo per mod che non cambiano il gameplay.",
+  "mine.online_undone": "Queste mod partiranno solo quando ospiti tu."
 }

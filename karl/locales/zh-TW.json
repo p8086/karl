@@ -442,5 +442,10 @@
   "hist.crash": "DRG 當機 {text}",
   "hist.session_ok": "正常遊玩",
   "hist.culprit": "找到問題模組:{name}",
-  "hist.bisect": "開始尋找問題模組({text} 個)"
+  "hist.bisect": "開始尋找問題模組({text} 個)",
+  "mine.ctx_online_on": "在其他玩家的大廳中也啟動",
+  "mine.ctx_online_off": "不在其他玩家的大廳中啟動",
+  "mine.online_mark": "連線",
+  "mine.online_done": "Karl 也會在其他玩家的大廳中啟動這些模組。僅用於不改變遊戲玩法的模組。",
+  "mine.online_undone": "這些模組只在你擔任主機時啟動。"
 }

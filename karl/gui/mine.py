@@ -315,8 +315,7 @@ class MineTab(tk.Frame):
                              tags=() if on else ("off",),
                              values=(positions.get(m.mod_id, ""), label, ver,
                                      human_size(self.lib.mod_size(m)), ", ".join(m.tags),
-                                     tr("mode.file") if m.source == SOURCE_FILE
-                                     else (m.approval or "-"),
+                                     self._category(m),
                                      "★" if m.favorite else "☆"))
         keep = [i for i in selected if self.tree.exists(i)] if selected else []
         if keep:
@@ -324,6 +323,13 @@ class MineTab(tk.Frame):
         all_on = bool(mods) and all(self.is_on(m) for m in mods)
         self.tree.heading("#0", image=self.sw_on if all_on else self.sw_off)
         self._update_unsaved()
+
+    def _category(self, m) -> str:
+        if m.source == SOURCE_FILE:
+            return tr("mode.file")
+        if m.online and self.lib.host_only(m.mod_id):
+            return f"{m.approval} · {tr('mine.online_mark')}"
+        return m.approval or "-"
 
     def only_favorites(self) -> bool:
         return self.show_var.get() == tr("mine.show_fav")
@@ -490,12 +496,17 @@ class MineTab(tk.Frame):
             return "break"
         if row not in self.tree.selection():
             self.tree.selection_set([row])
-        one = len(self.selected_ids()) == 1
+        ids = self.selected_ids()
+        one = len(ids) == 1
+        hosted = [i for i in ids if self.lib.host_only(i)]
+        online_on = bool(hosted) and all(self.lib.mods[i].online for i in hosted)
         menu = tk.Menu(self, tearoff=0, bg=PANEL, fg=FG, activebackground=ACCENT,
                        activeforeground=ON_ACCENT)
         items = [("mine.ctx_toggle", self.toggle, True),
                  ("mine.ctx_favorite", self.toggle_favorite, True),
                  ("mine.ctx_position", self.ask_position, one),
+                 ("mine.ctx_online_off" if online_on else "mine.ctx_online_on",
+                  self.toggle_online, bool(hosted)),
                  None,
                  ("mine.ctx_details", self.open_details, one),
                  ("mine.open", self.open_page, True),
@@ -524,6 +535,13 @@ class MineTab(tk.Frame):
         if ids:
             self.lib.set_favorite(ids)
             self.refresh()
+
+    def toggle_online(self):
+        value = self.lib.set_online(self.selected_ids())
+        if value is None:
+            return
+        self.refresh()
+        self.app.set_status(tr("mine.online_done" if value else "mine.online_undone"))
 
     def ask_position(self):
         ids = self.selected_ids()

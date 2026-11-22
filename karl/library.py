@@ -295,6 +295,25 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         self._save_list()
         return value
 
+    def host_only(self, mod_id: int) -> bool:
+        e = self.mods.get(mod_id)
+        return bool(e) and e.source != SOURCE_FILE and e.approval in ("Approved", "Sandbox")
+
+    def set_online(self, ids: list[int], value: Optional[bool] = None) -> Optional[bool]:
+        entries = [self.mods[i] for i in ids if self.host_only(i)]
+        if not entries:
+            return None
+        if value is None:
+            value = not all(e.online for e in entries)
+        for e in entries:
+            e.online = value
+        self._save_list()
+        try:
+            self.sync_loader()
+        except Exception:
+            pass
+        return value
+
     @staticmethod
     def _clean_tags(tags) -> list[str]:
         out: list[str] = []

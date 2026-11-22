@@ -442,5 +442,10 @@
   "hist.crash": "DRG 충돌 {text}",
   "hist.session_ok": "문제없이 플레이",
   "hist.culprit": "문제 모드 발견: {name}",
-  "hist.bisect": "문제 모드 검색 시작({text}개)"
+  "hist.bisect": "문제 모드 검색 시작({text}개)",
+  "mine.ctx_online_on": "다른 플레이어 로비에서도 시작",
+  "mine.ctx_online_off": "다른 플레이어 로비에서는 시작 안 함",
+  "mine.online_mark": "온라인",
+  "mine.online_done": "다른 플레이어의 로비에서도 Karl이 이 모드를 시작합니다. 게임플레이를 바꾸지 않는 모드에만 사용하세요.",
+  "mine.online_undone": "이 모드는 호스트일 때만 시작됩니다."
 }

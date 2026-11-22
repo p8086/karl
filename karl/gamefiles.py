@@ -237,7 +237,8 @@ class GameFilesMixin:
                 classes["spacerig"] += c["spacerig"]
                 classes["cave"] += c["cave"]
             if classes["spacerig"] or classes["cave"]:
-                classes["client"] = e.source == SOURCE_FILE or e.approval in ("", "Verified")
+                classes["client"] = (e.source == SOURCE_FILE or e.online
+                                     or e.approval in ("", "Verified"))
                 out.append((e.name, classes))
         return out
 

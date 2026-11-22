@@ -442,5 +442,10 @@
   "hist.crash": "DRG s-a închis cu eroare {text}",
   "hist.session_ok": "Joc fără probleme",
   "hist.culprit": "Mod problematic găsit: {name}",
-  "hist.bisect": "Pornită căutarea modului problematic ({text} moduri)"
+  "hist.bisect": "Pornită căutarea modului problematic ({text} moduri)",
+  "mine.ctx_online_on": "Pornește în lobby-urile altor jucători",
+  "mine.ctx_online_off": "Nu porni în lobby-urile altor jucători",
+  "mine.online_mark": "online",
+  "mine.online_done": "Karl va porni aceste moduri și în lobby-urile altor jucători. Folosește doar pentru moduri care nu schimbă gameplay-ul.",
+  "mine.online_undone": "Aceste moduri vor porni doar când ești gazdă."
 }

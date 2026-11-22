@@ -442,5 +442,10 @@
   "hist.crash": "DRG crashed {text}",
   "hist.session_ok": "Played without problems",
   "hist.culprit": "Problem mod found: {name}",
-  "hist.bisect": "Started the problem mod search ({text} mods)"
+  "hist.bisect": "Started the problem mod search ({text} mods)",
+  "mine.ctx_online_on": "Start in other players' lobbies",
+  "mine.ctx_online_off": "Don't start in other players' lobbies",
+  "mine.online_mark": "online",
+  "mine.online_done": "Karl will start these mods in other players' lobbies too. Only use it for mods that don't change gameplay.",
+  "mine.online_undone": "These mods will only start when you host."
 }

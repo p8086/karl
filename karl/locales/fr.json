@@ -442,5 +442,10 @@
   "hist.crash": "DRG a planté {text}",
   "hist.session_ok": "Partie sans problème",
   "hist.culprit": "Mod problématique trouvé : {name}",
-  "hist.bisect": "Recherche du mod problématique lancée ({text} mods)"
+  "hist.bisect": "Recherche du mod problématique lancée ({text} mods)",
+  "mine.ctx_online_on": "Lancer dans les parties des autres",
+  "mine.ctx_online_off": "Ne pas lancer dans les parties des autres",
+  "mine.online_mark": "en ligne",
+  "mine.online_done": "Karl lancera aussi ces mods dans les parties des autres joueurs. À utiliser seulement pour des mods qui ne changent pas le gameplay.",
+  "mine.online_undone": "Ces mods ne se lanceront que lorsque tu héberges."
 }

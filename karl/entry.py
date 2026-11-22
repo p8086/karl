@@ -61,6 +61,7 @@ class ModEntry:
     favorite: bool = False
     note: str = ""
     deps: Optional[list] = None
+    online: bool = False
     game_versions: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     removed: bool = False

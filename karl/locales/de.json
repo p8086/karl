@@ -442,5 +442,10 @@
   "hist.crash": "DRG abgestürzt {text}",
   "hist.session_ok": "Ohne Probleme gespielt",
   "hist.culprit": "Problem-Mod gefunden: {name}",
-  "hist.bisect": "Suche nach der Problem-Mod gestartet ({text} Mods)"
+  "hist.bisect": "Suche nach der Problem-Mod gestartet ({text} Mods)",
+  "mine.ctx_online_on": "In Lobbys anderer Spieler starten",
+  "mine.ctx_online_off": "Nicht in Lobbys anderer Spieler starten",
+  "mine.online_mark": "online",
+  "mine.online_done": "Karl startet diese Mods auch in Lobbys anderer Spieler. Nur für Mods verwenden, die das Gameplay nicht ändern.",
+  "mine.online_undone": "Diese Mods starten nur, wenn du hostest."
 }

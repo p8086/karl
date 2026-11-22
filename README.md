@@ -132,7 +132,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Tags.** Select one or more mods and press **Tags…** (or right-click → **Tags…**) to give them your own labels, for example *HUD*, *Audio* or *To try*: tick the tags you already use or type a new one and press **Add**, so a typo never creates a duplicate tag. The ✕ next to a tag deletes it from every mod that uses it. Tags have their own **Tags** column, the **Show** drop-down gets a *Tag: …* entry for each one plus **Without tags** (handy to make sure every mod has one), and the search finds them too. Tags travel with **Export configuration**.
 
-**Right-click menu.** Right-click a mod (or a selection) for quick access to everything: turn on or off, favorite, load position, details, open on mod.io, previous version, note, tags and remove.
+**Right-click menu.** Right-click a mod (or a selection) for quick access to everything: turn on or off, favorite, load position, start in other players' lobbies, details, open on mod.io, previous version, note, tags and remove.
 
 **Drag and drop.** Drop `.pak` or `.zip` files, or mod.io links dragged from the browser, anywhere on Karl's window: they go into the *Mod links* box and Karl adds them right away.
 
@@ -235,6 +235,8 @@ Karl installs mods outside DRG's built-in mod menu, so **the game doesn't know w
 - when you **host**, your lobby is **not marked as modded** in the server browser, even with *Approved* or *Sandbox* mods enabled;
 - *Sandbox* mods **don't turn off progression** as they do when you enable them from the game's menu;
 - when you **join someone else's lobby**, Karl only starts *Verified* mods (client-side, allowed everywhere) and your own `.pak` files. *Approved* and *Sandbox* mods stay off until you host again, so you never bring gameplay changes into another player's game.
+
+Some *Approved* mods only affect your own screen (HUDs, menus, indicators) and are safe in any lobby. For those, right-click the mod and choose **Start in other players' lobbies**: the *Category* column shows *Approved · online* and Karl starts it when you join someone else's game too. Choose **Don't start in other players' lobbies** to go back. Turn it on only for mods that don't change gameplay (enemies, damage, missions, equipment), or your game will go out of sync with the host's: no weapons, enemies dealing no damage, objects that don't break. Note that the files a mod replaces inside the game (models, values, sounds) are loaded when DRG starts, so they stay active in every lobby: this switch only decides whether the mod's startup blueprints run.
 
 **Adding your own .pak files.** For a mod that isn't on mod.io, for example one you are making, press **Add .pak file…** and pick one or more `.pak` or `.zip` files. You can also paste the file path into the box, even in quotes as Windows' "Copy as path" does. Karl copies the pak into the game folder as `Content\Paks\FSD-WindowsNoEditor_karl_file-<name>_P.pak` and shows it as *.pak file* in the Category column. When you rebuild the mod, add the same file again: Karl updates the existing mod instead of creating a new one.
 

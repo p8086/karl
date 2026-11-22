@@ -442,5 +442,10 @@
   "hist.crash": "DRG がクラッシュ {text}",
   "hist.session_ok": "問題なくプレイ",
   "hist.culprit": "問題の Mod を発見: {name}",
-  "hist.bisect": "問題の Mod の検索を開始({text} 個)"
+  "hist.bisect": "問題の Mod の検索を開始({text} 個)",
+  "mine.ctx_online_on": "他のプレイヤーのロビーでも起動",
+  "mine.ctx_online_off": "他のプレイヤーのロビーでは起動しない",
+  "mine.online_mark": "オンライン",
+  "mine.online_done": "他のプレイヤーのロビーでも Karl はこれらの MOD を起動します。ゲームプレイを変えない MOD にだけ使ってください。",
+  "mine.online_undone": "これらの MOD はホストのときだけ起動します。"
 }

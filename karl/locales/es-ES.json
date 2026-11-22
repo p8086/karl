@@ -442,5 +442,10 @@
   "hist.crash": "DRG falló {text}",
   "hist.session_ok": "Partida sin problemas",
   "hist.culprit": "Mod problemático encontrado: {name}",
-  "hist.bisect": "Iniciada la búsqueda del mod problemático ({text} mods)"
+  "hist.bisect": "Iniciada la búsqueda del mod problemático ({text} mods)",
+  "mine.ctx_online_on": "Iniciar en partidas de otros jugadores",
+  "mine.ctx_online_off": "No iniciar en partidas de otros jugadores",
+  "mine.online_mark": "online",
+  "mine.online_done": "Karl iniciará estos mods también en las partidas de otros jugadores. Úsalo solo con mods que no cambien la jugabilidad.",
+  "mine.online_undone": "Estos mods solo se iniciarán cuando seas el anfitrión."
 }
