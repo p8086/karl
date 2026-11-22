@@ -205,6 +205,10 @@ class IntegrationTests(unittest.TestCase):
         text = script.read_text(encoding="utf-8")
         self.assertIn("ExecuteWithDelay", text)
         self.assertNotIn("on_player_ready", text)
+        start = text[text.index("local function start("):text.index("RegisterLoadMapPostHook")]
+        self.assertIn("pcall(attempt, key, st)", start)
+        self.assertNotIn("schedule(", start)
+        self.assertNotIn("ExecuteWithDelay", start)
 
     def test_diagnostics_reads_loader_log(self):
         from karl import diagnostics
@@ -225,6 +229,15 @@ class IntegrationTests(unittest.TestCase):
         diagnostics._loader_log(ue, add)
         self.assertEqual(out, [(diagnostics.WARN, "Karl loader (last game start): 1 blueprint(s) started, "
                                 "not started: Secondary (/Game/Sec/InitCave.InitCave_C)")])
+        out.clear()
+        (ue / "UE4SS.log").write_text(
+            "[Lua] [Karl] KarlLoader 2.2: 1 mod con blueprint\n"
+            "[Lua] [Karl] avviata Hub (/Game/Hub/InitCave.InitCave_C)\n"
+            "[Lua] [Karl] cave, client, ClientRestart, tentativo 1: avviate 1, in attesa 0, saltate 0\n",
+            encoding="utf-8")
+        diagnostics._loader_log(ue, add)
+        self.assertEqual(out[0][0], diagnostics.WARN)
+        self.assertIn("started late 1 time(s)", out[0][1])
 
     def test_hide_asset_registry(self):
         import hashlib

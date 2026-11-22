@@ -1,7 +1,6 @@
-local VERSION = "2.1"
+local VERSION = "2.2"
 local UEHelpers = require("UEHelpers")
 
-local FIRST_DELAY = 1500
 local RETRY_DELAY = 2000
 local MAX_TRIES = 6
 
@@ -113,8 +112,8 @@ local function attempt(key, st)
             end
         end
     end
-    log(string.format("%s, %s, tentativo %d: avviate %d, in attesa %d, saltate %d (non Verified nella lobby di un altro)",
-        st.kind, who, st.tries, started, #missing, skipped))
+    log(string.format("%s, %s, %s, tentativo %d: avviate %d, in attesa %d, saltate %d (non Verified nella lobby di un altro)",
+        st.kind, who, st.trigger, st.tries, started, #missing, skipped))
     if #missing == 0 then
         return
     end
@@ -138,7 +137,7 @@ schedule = function(key, st, delay)
     end)
 end
 
-local function start(world, fresh)
+local function start(world, fresh, trigger)
     if not world or not world:IsValid() then
         return
     end
@@ -151,18 +150,21 @@ local function start(world, fresh)
     if old and not fresh and (old.mark == nil or old.mark:IsValid()) then
         return
     end
-    local st = { world = world, kind = kind, spawned = {}, tries = 0 }
+    local st = { world = world, kind = kind, spawned = {}, tries = 0, trigger = trigger }
     worlds[key] = st
-    schedule(key, st, FIRST_DELAY)
+    local okRun, err = pcall(attempt, key, st)
+    if not okRun then
+        log("errore: " .. tostring(err))
+    end
 end
 
 RegisterLoadMapPostHook(function(engine, world)
-    start(world:get(), true)
+    start(world:get(), true, "mappa")
 end)
 
 RegisterHook("/Script/Engine.PlayerController:ClientRestart", function(ctx)
     local controller = ctx:get()
     if controller and controller:IsValid() then
-        start(controller:GetWorld(), false)
+        start(controller:GetWorld(), false, "ClientRestart")
     end
 end)

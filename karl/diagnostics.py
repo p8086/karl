@@ -166,10 +166,14 @@ def _loader_log(ue: Path, add) -> None:
     started = sum(1 for ln in run if "[Karl] avviata " in ln)
     failed = sorted({ln.split("non riesco ad avviare", 1)[1].strip()
                      for ln in run if "non riesco ad avviare" in ln})
+    late = sum(1 for ln in run if ", ClientRestart, tentativo 1:" in ln)
     msg = f"Karl loader (last game start): {started} blueprint(s) started"
     if failed:
         msg += ", not started: " + ", ".join(failed[:10])
-    add(WARN if failed else OK, msg)
+    if late:
+        msg += (f"; started late {late} time(s) (after your dwarf spawned), mods that set up"
+                " when the dwarf spawns may not work")
+    add(WARN if failed or late else OK, msg)
 
 
 def _modio(lib: "Library", network: bool, add) -> None:
