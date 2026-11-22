@@ -236,8 +236,7 @@ class IntegrationTests(unittest.TestCase):
             "[Lua] [Karl] cave, client, ClientRestart, tentativo 1: avviate 1, in attesa 0, saltate 0\n",
             encoding="utf-8")
         diagnostics._loader_log(ue, add)
-        self.assertEqual(out[0][0], diagnostics.WARN)
-        self.assertIn("started late 1 time(s)", out[0][1])
+        self.assertEqual(out, [(diagnostics.OK, "Karl loader (last game start): 1 blueprint(s) started")])
 
     def test_hide_asset_registry(self):
         import hashlib
