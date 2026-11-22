@@ -206,9 +206,11 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("ExecuteWithDelay", text)
         self.assertNotIn("on_player_ready", text)
         start = text[text.index("local function start("):text.index("local function early(")]
-        self.assertIn("if not run(key, st) then", start)
+        self.assertIn("if not run(key, st, nil, world) then", start)
         self.assertNotIn("ExecuteWithDelay", start)
         self.assertIn("NotifyOnNewObject", text)
+        self.assertNotIn("st.world", text)
+        self.assertNotIn(".mark", text)
 
     def test_diagnostics_reads_loader_log(self):
         from karl import diagnostics

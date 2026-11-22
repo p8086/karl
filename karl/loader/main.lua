@@ -1,11 +1,12 @@
-local VERSION = "2.4"
+local VERSION = "2.6"
 local UEHelpers = require("UEHelpers")
 
 local RETRY_DELAY = 2000
 local MAX_TRIES = 6
 local STEP_DELAY = 20
 local STEP_BUDGET = 0.015
-local MAX_WAITS = 3000
+local MAX_WAITS = 1500
+local EARLY_RETRY = 25
 
 local function log(msg)
     print("[Karl] " .. tostring(msg) .. "\n")
@@ -92,14 +93,53 @@ end
 
 local worlds = {}
 local busy = false
+local viewport = nil
 local schedule
 
-local function attempt(key, st, budget)
+local function current_world()
+    local okWorld, world = pcall(function()
+        if not viewport or not viewport:IsValid() then
+            viewport = FindFirstOf("GameViewportClient")
+        end
+        if not viewport or not viewport:IsValid() then
+            return nil
+        end
+        local w = viewport.World
+        if w and w:IsValid() then
+            return w
+        end
+        return nil
+    end)
+    if okWorld then
+        return world
+    end
+    return nil
+end
+
+local function key_of(world)
+    local kind = map_kind(world)
+    if not kind then
+        return nil, nil
+    end
+    local okState, state = pcall(function()
+        local level = world.PersistentLevel
+        if level ~= nil and level:IsValid() then
+            return tostring(level:GetAddress())
+        end
+        return nil
+    end)
+    if not okState or not state then
+        return nil, nil
+    end
+    return kind .. "|" .. tostring(world:GetAddress()) .. "|" .. state, kind
+end
+
+local function attempt(key, st, budget, given)
     if worlds[key] ~= st or st.done then
         return true
     end
-    local world = st.world
-    if not world or not world:IsValid() then
+    local world = given or current_world()
+    if not world or key_of(world) ~= key then
         worlds[key] = nil
         return true
     end
@@ -117,18 +157,15 @@ local function attempt(key, st, budget)
                 else
                     local tm = os.clock()
                     local cls = find_class(path)
-                    local actor = nil
+                    local ok_actor = false
                     if cls then
-                        local okSpawn, result = pcall(function()
+                        local okSpawn, actor = pcall(function()
                             return world:SpawnActor(cls, {}, {})
                         end)
-                        if okSpawn then
-                            actor = result
-                        end
+                        ok_actor = okSpawn and actor ~= nil and actor:IsValid()
                     end
-                    if actor and actor:IsValid() then
+                    if ok_actor then
                         st.spawned[path] = true
-                        st.mark = st.mark or actor
                         started = started + 1
                         log("avviata " .. tostring(mod.name) .. " (" .. path .. ") in " .. ms(tm) .. " ms")
                     elseif budget then
@@ -156,6 +193,9 @@ local function attempt(key, st, budget)
                 end
             end
         end
+        if #missing > 0 then
+            return "later"
+        end
     end
     st.tries = st.tries + 1
     log(string.format("%s, %s, %s, tentativo %d: avviate %d, in attesa %d, saltate %d (non Verified nella lobby di un altro), %d ms",
@@ -176,12 +216,12 @@ local function attempt(key, st, budget)
     return true
 end
 
-local function run(key, st, budget)
+local function run(key, st, budget, given)
     if busy then
-        return false
+        return budget and "later" or false
     end
     busy = true
-    local okRun, result = pcall(attempt, key, st, budget)
+    local okRun, result = pcall(attempt, key, st, budget, given)
     busy = false
     if not okRun then
         log("errore: " .. tostring(result))
@@ -201,16 +241,14 @@ schedule = function(key, st, delay)
 end
 
 local function state_for(world, trigger)
-    local kind = map_kind(world)
-    if not kind then
+    local key, kind = key_of(world)
+    if not key then
         return nil
     end
-    local key = kind .. "|" .. tostring(world:GetAddress())
-    local old = worlds[key]
-    if old and not (old.mark and not old.mark:IsValid()) then
-        return key, old
+    if worlds[key] then
+        return key, worlds[key]
     end
-    local st = { world = world, kind = kind, spawned = {}, failed = {}, tries = 0,
+    local st = { kind = kind, spawned = {}, failed = {}, tries = 0,
                  started = 0, spent = 0, trigger = trigger }
     worlds[key] = st
     return key, st
@@ -227,35 +265,49 @@ local function start(world, trigger)
     if st.trigger ~= trigger then
         st.trigger = st.trigger .. "+" .. trigger
     end
-    if not run(key, st) then
+    if not run(key, st, nil, world) then
         schedule(key, st, STEP_DELAY)
     end
 end
 
-local function early(world)
-    local key, st
+local early_running = false
+
+local function early()
+    if early_running then
+        return
+    end
+    early_running = true
     local waits = 0
+    local mine = nil
     local function step()
-        if not world:IsValid() then
-            return
+        waits = waits + 1
+        local world = current_world()
+        if not world or not key_of(world) or not ready(world) then
+            return waits < MAX_WAITS and "wait" or nil
         end
+        local key, st = state_for(world, "anticipo")
         if not st then
-            if not map_kind(world) then
-                return
-            end
-            if not ready(world) then
-                waits = waits + 1
-                return waits < MAX_WAITS and "wait" or nil
-            end
-            key, st = state_for(world, "anticipo")
-            if not st then
-                return
-            end
+            return waits < MAX_WAITS and "wait" or nil
         end
-        if st.done or worlds[key] ~= st then
+        if mine == nil and st.tries == 0 and not st.done then
+            mine = st
+        end
+        if st ~= mine then
+            return waits < MAX_WAITS and "wait" or nil
+        end
+        if st.done or st.tries > 0 then
             return
         end
-        if not run(key, st, STEP_BUDGET) then
+        if st.pause and st.pause > 0 then
+            st.pause = st.pause - 1
+            return waits < MAX_WAITS and "wait" or nil
+        end
+        local res = run(key, st, STEP_BUDGET, world)
+        if res == "later" then
+            st.pause = EARLY_RETRY
+            return waits < MAX_WAITS and "wait" or nil
+        end
+        if not res then
             return "wait"
         end
     end
@@ -263,10 +315,13 @@ local function early(world)
         ExecuteWithDelay(STEP_DELAY, function()
             ExecuteInGameThread(function()
                 local okRun, res = pcall(step)
+                if okRun and res == "wait" then
+                    again()
+                    return
+                end
+                early_running = false
                 if not okRun then
                     log("errore nell'avvio anticipato: " .. tostring(res))
-                elseif res == "wait" then
-                    again()
                 end
             end)
         end)
@@ -275,7 +330,7 @@ local function early(world)
 end
 
 local okNotify, notifyErr = pcall(NotifyOnNewObject, "/Script/Engine.World", function(world)
-    early(world)
+    early()
 end)
 if not okNotify then
     log("avvio anticipato non disponibile: " .. tostring(notifyErr))
