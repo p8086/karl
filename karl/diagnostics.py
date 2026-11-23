@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from . import VERSION, game, log as karl_log, merge
+from . import VERSION, game, log as karl_log, merge, pakfile
 from .entry import SOURCE_FILE
 from .i18n import human_size
 from .modio import mask_token
@@ -105,6 +105,24 @@ def _mods(lib: "Library", paks: Optional[Path], add) -> None:
         reorder = [e for e in on if lib.needs_reorder(e)]
         if reorder:
             add(WARN, "Load order not applied yet for: " + _names(reorder))
+    shaders, old_format = [], []
+    for e in on:
+        listed = []
+        for c in e.cached_paks:
+            try:
+                listed.append((pakfile.pak_version(Path(c)), pakfile.list_files(Path(c))))
+            except (OSError, pakfile.PakError, ValueError):
+                continue
+        if any(f.lower().endswith(pakfile.SHADER_EXT) for _v, fs in listed for f in fs):
+            shaders.append(e)
+        if any(v < 11 for v, _fs in listed):
+            old_format.append(e)
+    if shaders:
+        add(INFO, "Mods with shader files (turned off by Karl, they often crash the game): "
+                  + _names(shaders))
+    if old_format:
+        add(WARN, "Mods packed with an old pak format (may not work on the current DRG): "
+                  + _names(old_format))
     files = [e for e in lib.mods.values() if e.source == SOURCE_FILE]
     if files:
         add(INFO, "Mods from .pak files: " + _names(files))

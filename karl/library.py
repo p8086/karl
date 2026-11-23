@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import paths
+from . import merge, paths
 from .config import Config
 from .entry import ENTRY_KEYS, GAME_PAK_PREFIX, MOD_FILE_EXT, ModEntry, SOURCE_FILE, approval_of
 from .folders import FoldersMixin
@@ -19,7 +19,7 @@ from .gamefiles import GameFilesMixin
 from .history import History
 from .i18n import tr
 from .modio import ModioClient, ModioError, mod_name, modfile_info, parse_mod_url
-from .pakfile import PakError, hide_asset_registry
+from .pakfile import PakError, hide_asset_registry, hide_shaders
 from .paths import MAIN_INSTALL, use_install
 from .timemachine import TimeMachine
 from .updates import UpdatesMixin
@@ -156,9 +156,29 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
     @staticmethod
     def _make_safe(pak: Path) -> bool:
         try:
-            return hide_asset_registry(pak)
+            hidden = hide_asset_registry(pak)
+            return bool(hide_shaders(pak)) or hidden
         except (OSError, PakError, struct.error):
             return False
+
+    def remove_orphan_paks(self) -> list[str]:
+        if not self.config.paks_dir:
+            return []
+        try:
+            paks = self.paks_dir()
+        except ModioError:
+            return []
+        used = {n.lower() for e in self.mods.values() for n in e.installed_paks}
+        used |= {merge.PAK_NAME.lower()}
+        removed = []
+        for p in paks.glob(f"{GAME_PAK_PREFIX}*.pak"):
+            if p.name.lower() not in used:
+                try:
+                    p.unlink()
+                    removed.append(p.name)
+                except OSError:
+                    pass
+        return removed
 
     def _remove_from_game(self, entry: ModEntry) -> None:
         if not entry.installed_paks:

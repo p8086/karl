@@ -1345,6 +1345,23 @@ class FeatureTests(GuiBase):
         self.assertIn("mod-50", out.read_text(encoding="utf-8"))
         self.assertEqual(app.status.get(), tr("list.exported", n=1, path=str(out)))
 
+    def test_view_choices_are_remembered(self):
+        app = self.make_app()
+        tr = gui.app.tr
+        mine = app.mine
+        mine.sort_var.set(tr("mine.sort_approval"))
+        mine.show_var.set(tr("mine.show_fav"))
+        mine._view_changed()
+        app.browse.sort.var.set(tr("browse.sort_alpha"))
+        app.browse._view_changed()
+        app.pool.shutdown(wait=True)
+        app2 = gui.App()
+        self.addCleanup(app2.pool.shutdown, wait=True)
+        pump(app2, 80)
+        self.assertEqual(app2.mine.sort_key(), "approval")
+        self.assertEqual(app2.mine.show_key(), "fav")
+        self.assertEqual(app2.browse.sort.key, "alpha")
+
     def test_install_blocked_while_game_runs(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib

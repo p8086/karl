@@ -192,6 +192,7 @@ class UpdatesMixin:
                 report["installed"].append(e.name)
             else:
                 report["ok"] += 1
+        self.remove_orphan_paks()
         self.save()
         if not report["failed"]:
             try:
@@ -230,6 +231,9 @@ class UpdatesMixin:
             if result == "updated" or missing:
                 self._copy_to_game(e)
                 result = result or "installed"
+            else:
+                for name in e.installed_paks:
+                    self._make_safe(self._installed_path(name))
         elif e.installed_paks:
             self._remove_from_game(e)
         return result

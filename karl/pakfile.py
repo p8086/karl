@@ -200,3 +200,89 @@ def hide_asset_registry(path: Path) -> bool:
         f.seek(magic_pos + 24)
         f.write(hashlib.sha1(bytes(idx)).digest())
     return True
+
+
+SHADER_EXT = ".ushaderbytecode"
+SHADER_OFF = ".ushaderbyte_krl"
+
+
+def pak_version(path: Path) -> int:
+    with open(path, "rb") as f:
+        return _footer(f)[0]
+
+
+def _hide_suffix_old(idx: bytearray, start: int) -> int:
+    pattern = re.compile(rb"[\x20-\x7e]{1,255}" + re.escape(SHADER_EXT.encode()) + rb"\x00", re.I)
+    changed = 0
+    for m in pattern.finditer(bytes(idx[start:])):
+        end = start + m.end() - 1
+        idx[end - len(SHADER_EXT):end] = SHADER_OFF.encode()
+        changed += 1
+    return changed
+
+
+def hide_shaders(path: Path) -> int:
+    with open(path, "r+b") as f:
+        ver, encrypted, off, isz, magic_pos = _footer_at(f)
+        if encrypted:
+            return 0
+        f.seek(off)
+        idx = bytearray(f.read(isz))
+        _mount, o = _fstring(idx, 0)
+        if ver < 10:
+            changed = _hide_suffix_old(idx, o)
+        else:
+            count, seed = struct.unpack_from("<iQ", idx, o)
+            o += 12
+            phi_at = o if struct.unpack_from("<I", idx, o)[0] else None
+            o += 4 + 8 + 8 + 20 if phi_at is not None else 4
+            if not struct.unpack_from("<I", idx, o)[0]:
+                return 0
+            fdi_at = o
+            fdi_off, fdi_size = struct.unpack_from("<qq", idx, fdi_at + 4)
+            f.seek(fdi_off)
+            fdi = bytearray(f.read(fdi_size))
+            renamed: dict[int, int] = {}
+            p = 0
+            (ndirs,) = struct.unpack_from("<i", fdi, p)
+            p += 4
+            for _ in range(ndirs):
+                d, p = _fstring(fdi, p)
+                (nf,) = struct.unpack_from("<i", fdi, p)
+                p += 4
+                for _ in range(nf):
+                    (n,) = struct.unpack_from("<i", fdi, p)
+                    name, end = _fstring(fdi, p)
+                    if n > 0 and name.lower().endswith(SHADER_EXT):
+                        rel = (d.lstrip("/") + name).replace("//", "/")
+                        new_rel = rel[:-len(SHADER_EXT)] + SHADER_OFF
+                        stop = p + 4 + n - 1
+                        fdi[stop - len(SHADER_EXT):stop] = SHADER_OFF.encode()
+                        renamed[path_hash(rel, seed)] = path_hash(new_rel, seed)
+                    p = end + 4
+            changed = len(renamed)
+            if not changed:
+                return 0
+            f.seek(fdi_off)
+            f.write(fdi)
+            idx[fdi_at + 20:fdi_at + 40] = hashlib.sha1(fdi).digest()
+            if phi_at is not None:
+                phi_off, phi_size = struct.unpack_from("<qq", idx, phi_at + 4)
+                f.seek(phi_off)
+                phi = bytearray(f.read(phi_size))
+                (n,) = struct.unpack_from("<i", phi, 0)
+                for k in range(n):
+                    pos = 4 + 12 * k
+                    (h,) = struct.unpack_from("<Q", phi, pos)
+                    if h in renamed:
+                        struct.pack_into("<Q", phi, pos, renamed[h])
+                f.seek(phi_off)
+                f.write(phi)
+                idx[phi_at + 20:phi_at + 40] = hashlib.sha1(phi).digest()
+        if not changed:
+            return 0
+        f.seek(off)
+        f.write(idx)
+        f.seek(magic_pos + 24)
+        f.write(hashlib.sha1(bytes(idx)).digest())
+    return changed

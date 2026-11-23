@@ -126,7 +126,8 @@ class GameFilesMixin:
                 files = pakfile.list_files(Path(pak))
             except (PakError, OSError, struct.error, ValueError):
                 files = []
-            cache[key] = frozenset(f.lower() for f in files) - self.CONFLICT_IGNORE
+            cache[key] = frozenset(f.lower() for f in files
+                                   if not f.lower().endswith(pakfile.SHADER_EXT)) - self.CONFLICT_IGNORE
         return cache[key]
 
     def conflicts(self, states: Optional[dict[int, bool]] = None) -> dict[int, list[dict]]:

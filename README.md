@@ -62,6 +62,8 @@ Since Karl installs mods outside DRG's mod system, the game doesn't know which m
 - your lobby is **not marked as modded**, and *Sandbox* mods don't turn off progression;
 - your mods also start in other players' lobbies: keep gameplay mods (enemies, damage, missions) for your own games or friends with the same mods.
 
+Like mint, Karl keeps out of the game what often crashes it: the shader files some mods ship (`.ushaderbytecode`) are turned off in the installed copy, the mods' own asset registry is hidden, and leftover Karl paks that no longer belong to any mod are removed at every Install and save. **Diagnostics** also lists mods packed with an old pak format.
+
 If Karl finds files of another mod loader (`x3daudio1_7.dll`, `dwmapi.dll`, `mods_P.pak`) it offers to move them to a backup folder, deleting nothing. Karl only touches files starting with `karl_`.
 
 ## Troubleshooting

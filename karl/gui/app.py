@@ -234,6 +234,9 @@ class App(tk.Tk):
         except (tk.TclError, AttributeError, TypeError, ValueError):
             pass
         w, h = px(1360), px(860)
+        saved = self.config_.view.get("window")
+        if isinstance(saved, list) and len(saved) == 2:
+            w, h = int(saved[0]), int(saved[1])
         try:
             sw, sh = int(self.winfo_screenwidth()), int(self.winfo_screenheight())
             w, h = min(w, max(800, sw - 40)), min(h, max(500, sh - 80))
@@ -241,6 +244,11 @@ class App(tk.Tk):
             pass
         self.geometry(f"{w}x{h}")
         self.minsize(min(px(900), w), min(px(560), h))
+        if self.config_.view.get("zoomed"):
+            try:
+                self.state("zoomed")
+            except tk.TclError:
+                pass
 
     def _set_icon(self):
         if sys.platform == "win32":
@@ -448,7 +456,19 @@ class App(tk.Tk):
                                                                    tr("vanilla.quit")):
             self.bring_to_front()
             return
+        self._remember_window()
         self.destroy()
+
+    def _remember_window(self):
+        try:
+            zoomed = self.state() == "zoomed"
+            size = [int(self.winfo_width()), int(self.winfo_height())]
+        except (tk.TclError, AttributeError, TypeError, ValueError):
+            return
+        if size[0] < 200 or size[1] < 200:
+            return
+        self.config_.view = dict(self.config_.view, window=size, zoomed=zoomed)
+        self.config_.save()
 
     def destroy(self):
         tray = getattr(self, "tray", None)

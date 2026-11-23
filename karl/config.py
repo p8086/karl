@@ -42,6 +42,7 @@ class Config:
     last_launch: float = 0.0
     last_seen_version: str = ""
     bisect_restore: dict = field(default_factory=dict)
+    view: dict = field(default_factory=dict)
     installs: list = field(default_factory=list)
     active_install: str = MAIN_INSTALL
 

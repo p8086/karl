@@ -120,16 +120,18 @@ class MineTab(tk.Frame):
         self.show_combo = ttk.Combobox(filt, textvariable=self.show_var, height=20,
                                        values=self.show_choices, state="readonly", width=18)
         self.show_combo.pack(side="right")
-        self.show_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+        self.show_combo.bind("<<ComboboxSelected>>", lambda _e: self._view_changed())
         tk.Label(filt, text=tr("mine.show_label"), bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(side="right", padx=(12, 6))
         self.sort_keys = ["order", "approval", "name", "size", "added", "updated"]
         self.sort_labels = [tr(f"mine.sort_{k}") for k in self.sort_keys]
-        self.sort_var = tk.StringVar(value=self.sort_labels[0])
+        saved = self.app.config_.view.get("mine_sort")
+        self.sort_var = tk.StringVar(value=self.sort_labels[self.sort_keys.index(saved)]
+                                     if saved in self.sort_keys else self.sort_labels[0])
         sort_combo = ttk.Combobox(filt, textvariable=self.sort_var, values=self.sort_labels,
                                   state="readonly", width=16)
         sort_combo.pack(side="right")
-        sort_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+        sort_combo.bind("<<ComboboxSelected>>", lambda _e: self._view_changed())
         tk.Label(filt, text=tr("mine.sort_label"), bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(side="right", padx=(12, 6))
         self.compact_btn = ttk.Button(filt, command=self.toggle_compact)
@@ -351,11 +353,37 @@ class MineTab(tk.Frame):
         return self.sort_keys[self.sort_labels.index(value)] if value in self.sort_labels \
             else "order"
 
+    def show_key(self) -> str:
+        if self.only_favorites():
+            return "fav"
+        if self.only_untagged():
+            return "untagged"
+        tag = self.selected_tag()
+        return f"tag:{tag}" if tag is not None else "all"
+
+    def _show_label(self, key: str) -> str:
+        if key == "fav":
+            return tr("mine.show_fav")
+        if key == "untagged":
+            return tr("mine.show_untagged")
+        if key.startswith("tag:"):
+            return tr("mine.show_tag", tag=key[4:])
+        return tr("mine.show_all")
+
+    def _view_changed(self):
+        cfg = self.app.config_
+        cfg.view = dict(cfg.view, mine_sort=self.sort_key(), mine_show=self.show_key())
+        cfg.save()
+        self.refresh()
+
     def update_show_choices(self):
         choices = [tr("mine.show_all"), tr("mine.show_fav"), tr("mine.show_untagged")] + [
             tr("mine.show_tag", tag=t) for t in self.lib.all_tags()]
         self.show_choices = choices
         self.show_combo.configure(values=choices)
+        if not getattr(self, "_show_restored", False):
+            self._show_restored = True
+            self.show_var.set(self._show_label(self.app.config_.view.get("mine_show", "all")))
         if self.show_var.get() not in choices:
             self.show_var.set(choices[0])
 

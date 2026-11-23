@@ -487,9 +487,10 @@ class BrowseTab(tk.Frame):
         self.live_lbl = tk.Label(top, text="", bg=BG, fg=MUTED, font=(FONT, 9))
         self.live_lbl.pack(side="left", padx=(12, 0))
 
-        self.sort = Choice(list(SORTS), "browse.sort_", "trending")
-        self.date = Choice(list(DATES), "browse.date_", "any")
-        self.library = Choice(LIBRARY, "browse.lib_", LIB_ALL)
+        view = self.app.config_.view
+        self.sort = Choice(list(SORTS), "browse.sort_", view.get("browse_sort", "trending"))
+        self.date = Choice(list(DATES), "browse.date_", view.get("browse_date", "any"))
+        self.library = Choice(LIBRARY, "browse.lib_", view.get("browse_library", LIB_ALL))
         for label, choice, w in ((tr("browse.sort"), self.sort, 22),
                                  (tr("browse.date"), self.date, 18),
                                  (tr("browse.library"), self.library, 14)):
@@ -499,7 +500,7 @@ class BrowseTab(tk.Frame):
             cb = ttk.Combobox(box, textvariable=choice.var, values=choice.labels(),
                               state="readonly", width=w)
             cb.pack(side="left")
-            cb.bind("<<ComboboxSelected>>", lambda e: self.new_query())
+            cb.bind("<<ComboboxSelected>>", lambda e: self._view_changed())
 
         self.search_var = tk.StringVar()
         search = ttk.Entry(top, textvariable=self.search_var, width=28)
@@ -629,6 +630,13 @@ class BrowseTab(tk.Frame):
         self.query_lib_ids = self.library_ids()
         return build_query(self.search_var.get(), self.sidebar.selected(), self.sidebar.types,
                            self.sort.key, self.date.key, self.library.key, self.query_lib_ids)
+
+    def _view_changed(self):
+        cfg = self.app.config_
+        cfg.view = dict(cfg.view, browse_sort=self.sort.key, browse_date=self.date.key,
+                        browse_library=self.library.key)
+        cfg.save()
+        self.new_query()
 
     def new_query(self):
         if not self.started or self.game_id is None:

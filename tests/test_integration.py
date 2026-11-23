@@ -196,6 +196,37 @@ class IntegrationTests(unittest.TestCase):
         other.write_bytes(make_pak("../../../FSD/Content/X/", {"/": ["AssetRegistry.bin"]}))
         self.assertFalse(pakfile.hide_asset_registry(other))
 
+    def test_hide_shaders(self):
+        import hashlib
+        pak = self.root / "s.pak"
+        pak.write_bytes(make_pak("../../../FSD/", {"Content/": ["ShaderArchive-FSD-PCD3D_SM5.ushaderbytecode",
+                                                              "Mod/InitCave.uasset"]}))
+        self.assertEqual(pakfile.hide_shaders(pak), 1)
+        self.assertEqual(pakfile.hide_shaders(pak), 0)
+        files = pakfile.list_files(pak)
+        self.assertIn("FSD/Content/ShaderArchive-FSD-PCD3D_SM5.ushaderbyte_krl", files)
+        self.assertIn("FSD/Content/Mod/InitCave.uasset", files)
+        data = pak.read_bytes()
+        phi_n = struct.unpack_from("<i", data, 0)[0]
+        keys = {struct.unpack_from("<Q", data, 4 + 12 * i)[0] for i in range(phi_n)}
+        self.assertIn(pakfile.path_hash("Content/ShaderArchive-FSD-PCD3D_SM5.ushaderbyte_krl", 0x1234), keys)
+        with open(pak, "rb") as f:
+            ver, enc, off, isz = pakfile._footer(f)
+        self.assertEqual(hashlib.sha1(data[off:off + isz]).digest(), data[-221 + 41:-221 + 61])
+        self.assertEqual(pakfile.pak_version(pak), 11)
+
+    def test_orphan_paks_are_removed(self):
+        lib = Library(Config(paks_dir=str(self.paks)))
+        e = self.add(lib, "hud")
+        orphan = self.paks / "FSD-WindowsNoEditor_karl_file-vecchia_P.pak"
+        orphan.write_bytes(b"x")
+        other = self.paks / "AltraMod_P.pak"
+        other.write_bytes(b"x")
+        self.assertEqual(lib.remove_orphan_paks(), [orphan.name])
+        self.assertFalse(orphan.exists())
+        self.assertTrue(other.exists())
+        self.assertTrue((self.paks / e.installed_paks[0]).exists())
+
     def test_installed_copy_is_safe(self):
         lib = Library(Config(paks_dir=str(self.paks)))
         src = self.root / "src2"
