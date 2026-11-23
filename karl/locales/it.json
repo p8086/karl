@@ -380,7 +380,6 @@
   "scale.restart": "La nuova dimensione si applica al riavvio di Karl. Riavviare adesso?",
   "crash.watch": "Avvisami quando DRG crasha",
   "crash.title": "DRG si è chiuso per un crash",
-  "crash.kind_ue4ss": "file di crash di UE4SS",
   "crash.kind_game": "rapporto di crash del gioco",
   "crash.intro": "DRG è crashato alle {when} ({kind}). Se succede di nuovo, Karl può aiutarti a trovare la mod che lo causa.",
   "crash.error": "Errore dal log del gioco:",

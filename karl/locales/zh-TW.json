@@ -380,7 +380,6 @@
   "scale.restart": "新大小會在 Karl 重新啟動後套用。現在重新啟動嗎?",
   "crash.watch": "DRG 當機時提醒我",
   "crash.title": "DRG 因當機而關閉",
-  "crash.kind_ue4ss": "UE4SS 當機檔案",
   "crash.kind_game": "遊戲當機報告",
   "crash.intro": "DRG 在 {when} 當機了({kind})。如果再次發生,Karl 可以幫你找出造成問題的模組。",
   "crash.error": "遊戲記錄中的錯誤:",

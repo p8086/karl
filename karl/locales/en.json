@@ -380,7 +380,6 @@
   "scale.restart": "The new size is applied when Karl restarts. Restart now?",
   "crash.watch": "Warn me when DRG crashes",
   "crash.title": "DRG closed because of a crash",
-  "crash.kind_ue4ss": "UE4SS crash file",
   "crash.kind_game": "game crash report",
   "crash.intro": "DRG crashed at {when} ({kind}). If it keeps happening, Karl can help you find the mod that causes it.",
   "crash.error": "Error from the game log:",

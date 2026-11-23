@@ -380,7 +380,6 @@
   "scale.restart": "O novo tamanho é aplicado quando o Karl reiniciar. Reiniciar agora?",
   "crash.watch": "Me avisar quando o DRG travar",
   "crash.title": "O DRG fechou por causa de um travamento",
-  "crash.kind_ue4ss": "arquivo de travamento do UE4SS",
   "crash.kind_game": "relatório de travamento do jogo",
   "crash.intro": "O DRG travou às {when} ({kind}). Se acontecer de novo, o Karl pode ajudar a encontrar o mod que causa isso.",
   "crash.error": "Erro do log do jogo:",

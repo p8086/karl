@@ -380,7 +380,6 @@
   "scale.restart": "新大小会在 Karl 重启后生效。现在重启吗?",
   "crash.watch": "DRG 崩溃时提醒我",
   "crash.title": "DRG 因崩溃而关闭",
-  "crash.kind_ue4ss": "UE4SS 崩溃文件",
   "crash.kind_game": "游戏崩溃报告",
   "crash.intro": "DRG 在 {when} 崩溃了({kind})。如果再次发生,Karl 可以帮你找出导致问题的模组。",
   "crash.error": "游戏日志中的错误:",

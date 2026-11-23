@@ -380,7 +380,6 @@
   "scale.restart": "Az új méret a Karl újraindításakor lép életbe. Újraindítod most?",
   "crash.watch": "Figyelmeztess, ha a DRG összeomlik",
   "crash.title": "A DRG összeomlás miatt bezárult",
-  "crash.kind_ue4ss": "UE4SS összeomlásfájl",
   "crash.kind_game": "a játék összeomlási jelentése",
   "crash.intro": "A DRG {when}-kor összeomlott ({kind}). Ha újra megtörténik, a Karl segít megtalálni az okozó modot.",
   "crash.error": "Hiba a játék naplójából:",

@@ -670,16 +670,17 @@ class Tests(unittest.TestCase):
         hook.write_bytes(b"hook")
         bundle = self.paks / "FSD-WindowsNoEditor_Mods.pak"
         bundle.write_bytes(b"bundle")
-        ue4ss = fsd / "Binaries" / "Win64" / "dwmapi.dll"
-        ue4ss.write_bytes(b"ue4ss")
+        proxy = fsd / "Binaries" / "Win64" / "dwmapi.dll"
+        proxy.write_bytes(b"proxy")
         self.assertEqual(sorted(p.name for p in self.lib.foreign_loader_files()),
-                         ["FSD-WindowsNoEditor_Mods.pak", "x3daudio1_7.dll"])
+                         ["FSD-WindowsNoEditor_Mods.pak", "dwmapi.dll", "x3daudio1_7.dll"])
         backup = self.lib.disable_foreign_loader()
         self.assertFalse(hook.exists() or bundle.exists())
         self.assertEqual((backup / "Binaries" / "Win64" / "x3daudio1_7.dll").read_bytes(), b"hook")
         self.assertEqual((backup / "Content" / "Paks" / "FSD-WindowsNoEditor_Mods.pak").read_bytes(),
                          b"bundle")
-        self.assertTrue(ue4ss.exists())
+        self.assertFalse(proxy.exists())
+        self.assertEqual((backup / "Binaries" / "Win64" / "dwmapi.dll").read_bytes(), b"proxy")
         self.assertTrue((self.paks / "FSD-WindowsNoEditor.pak").exists())
         self.assertEqual(self.lib.foreign_loader_files(), [])
         hook.write_bytes(b"hook2")
@@ -1211,11 +1212,10 @@ class HistoryCrashBisectTests(unittest.TestCase):
         found = crash.find_crash(self.paks, since)
         self.assertEqual(found["detail"],
                          "Unhandled Exception: EXCEPTION_ACCESS_VIOLATION reading address 0x70")
-        self.assertFalse(found["ue4ss"])
         win64 = fsd / "Binaries" / "Win64"
         win64.mkdir(parents=True)
         (win64 / "crash_2026_11_20_15_09_22.dmp").write_bytes(b"x")
-        self.assertTrue(crash.find_crash(self.paks, since)["ue4ss"])
+        self.assertEqual(len(crash.find_crash(self.paks, since)["files"]), 2)
         self.assertIsNone(crash.find_crash(self.paks, _t.time() + 60))
 
     def test_bisect(self):

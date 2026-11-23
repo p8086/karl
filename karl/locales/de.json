@@ -380,7 +380,6 @@
   "scale.restart": "Die neue Größe wird beim Neustart von Karl übernommen. Jetzt neu starten?",
   "crash.watch": "Warnen, wenn DRG abstürzt",
   "crash.title": "DRG wurde durch einen Absturz beendet",
-  "crash.kind_ue4ss": "UE4SS-Absturzdatei",
   "crash.kind_game": "Absturzbericht des Spiels",
   "crash.intro": "DRG ist um {when} abgestürzt ({kind}). Wenn es wieder passiert, hilft dir Karl, die verantwortliche Mod zu finden.",
   "crash.error": "Fehler aus dem Spiel-Log:",

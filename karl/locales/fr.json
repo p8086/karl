@@ -380,7 +380,6 @@
   "scale.restart": "La nouvelle taille s'applique au redémarrage de Karl. Redémarrer maintenant ?",
   "crash.watch": "M'avertir quand DRG plante",
   "crash.title": "DRG s'est fermé à cause d'un plantage",
-  "crash.kind_ue4ss": "fichier de plantage UE4SS",
   "crash.kind_game": "rapport de plantage du jeu",
   "crash.intro": "DRG a planté à {when} ({kind}). Si ça recommence, Karl peut t'aider à trouver le mod responsable.",
   "crash.error": "Erreur du journal du jeu :",

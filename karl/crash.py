@@ -54,7 +54,7 @@ def find_crash(paks_dir: Path, since: float) -> Optional[dict]:
     if not paks_dir:
         return None
     fsd = fsd_dir(paks_dir)
-    found: dict = {"time": 0.0, "files": [], "detail": "", "ue4ss": False}
+    found: dict = {"time": 0.0, "files": [], "detail": ""}
     log = fsd / "Saved" / "Logs" / LOG_NAME
     if _mtime(log) >= since:
         crashed, detail = _log_error(log)
@@ -68,7 +68,6 @@ def find_crash(paks_dir: Path, since: float) -> Optional[dict]:
     except OSError:
         dumps = []
     if dumps:
-        found["ue4ss"] = True
         found["files"] += [str(p) for p in dumps]
         found["time"] = max([found["time"]] + [_mtime(p) for p in dumps])
     for place in crash_places(paks_dir):

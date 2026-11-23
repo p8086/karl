@@ -380,7 +380,6 @@
   "scale.restart": "새 크기는 Karl을 다시 시작하면 적용됩니다. 지금 다시 시작할까요?",
   "crash.watch": "DRG가 충돌하면 알려 주기",
   "crash.title": "DRG가 충돌로 종료되었습니다",
-  "crash.kind_ue4ss": "UE4SS 충돌 파일",
   "crash.kind_game": "게임 충돌 보고서",
   "crash.intro": "DRG가 {when}에 충돌했습니다({kind}). 다시 발생하면 Karl이 원인 모드를 찾도록 도와줍니다.",
   "crash.error": "게임 로그의 오류:",

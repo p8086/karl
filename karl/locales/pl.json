@@ -380,7 +380,6 @@
   "scale.restart": "Nowy rozmiar zostanie zastosowany po ponownym uruchomieniu Karla. Uruchomić ponownie teraz?",
   "crash.watch": "Ostrzegaj, gdy DRG się wysypie",
   "crash.title": "DRG zamknął się przez awarię",
-  "crash.kind_ue4ss": "plik awarii UE4SS",
   "crash.kind_game": "raport awarii gry",
   "crash.intro": "DRG wysypał się o {when} ({kind}). Jeśli to się powtórzy, Karl pomoże znaleźć mod, który to powoduje.",
   "crash.error": "Błąd z dziennika gry:",

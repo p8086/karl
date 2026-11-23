@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from . import VERSION, game, integration, log as karl_log, merge
+from . import VERSION, game, log as karl_log, merge
 from .entry import SOURCE_FILE
 from .i18n import human_size
 from .modio import mask_token
@@ -138,9 +138,6 @@ def _game_folder(lib: "Library", paks: Path, add) -> None:
     foreign = lib.foreign_loader_files()
     if foreign:
         add(WARN, "Other mod loaders found: " + ", ".join(str(f.name) for f in foreign))
-    win64 = integration.win64_dir(paks)
-    if merge.karl_ue4ss_active(win64, integration.ue4ss_dir(win64)):
-        add(WARN, "Old UE4SS + Karl loader still active (press Install and save to remove it)")
     tool = merge.tool_path()
     add(OK if tool else FAIL, f"Integration tool: {tool or 'missing'}")
     mods = lib.integration_mods()

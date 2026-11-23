@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import VERSION, game, integration, merge, pakfile, paths
+from . import VERSION, game, merge, pakfile, paths
 from .entry import ModEntry, approval_of
 from .i18n import tr
 from .modio import ModioError, mod_name
@@ -17,6 +17,7 @@ from .paths import CACHE_DIR
 
 class GameFilesMixin:
     FOREIGN_LOADER_FILES = ("Binaries/Win64/x3daudio1_7.dll",
+                            "Binaries/Win64/dwmapi.dll",
                             "Content/Paks/FSD-WindowsNoEditor_Mods.pak",
                             "Content/Paks/mods_P.pak")
 
@@ -27,11 +28,7 @@ class GameFilesMixin:
             fsd = self.mods_dir().parent
         except ModioError:
             return []
-        found = [fsd / rel for rel in self.FOREIGN_LOADER_FILES if (fsd / rel).is_file()]
-        win64 = fsd / "Binaries" / "Win64"
-        if integration.is_foreign_ue4ss(win64):
-            found += [p for p in (win64 / "dwmapi.dll", win64 / "ue4ss") if p.exists()]
-        return found
+        return [fsd / rel for rel in self.FOREIGN_LOADER_FILES if (fsd / rel).is_file()]
 
     def disable_foreign_loader(self) -> Path:
         fsd = self.mods_dir().parent
@@ -247,21 +244,13 @@ class GameFilesMixin:
                  for m in [re.search(r"_(\d+)_P\.pak$", n)] if m]
         return max(found, default=0)
 
-    def _game_dirs(self) -> tuple[Path, Path, Optional[Path]]:
-        paks = self.paks_dir()
-        win64 = integration.win64_dir(paks)
-        return paks.parent.parent, win64, integration.ue4ss_dir(win64)
-
     def integration_outdated(self) -> bool:
         if not self.config.paks_dir:
             return False
         try:
             paks = self.paks_dir()
-            fsd, win64, ue = self._game_dirs()
         except ModioError:
             return False
-        if merge.karl_ue4ss_active(win64, ue):
-            return True
         return merge.outdated(paks, self.integration_mods(), VERSION)
 
     def integration_skipped(self) -> list:
@@ -276,13 +265,10 @@ class GameFilesMixin:
             return None
         paks = self.paks_dir()
         mods = self.integration_mods()
-        fsd, win64, ue = self._game_dirs()
-        ue4ss_on = merge.karl_ue4ss_active(win64, ue)
-        if not force and not ue4ss_on and not merge.outdated(paks, mods, VERSION):
+        if not force and not merge.outdated(paks, mods, VERSION):
             return None
         if game.is_running():
             return None
-        merge.retire_ue4ss(fsd, win64, ue, log=log)
         if force:
             (paks / merge.STAMP_NAME).unlink(missing_ok=True)
         return merge.build(paks, mods, VERSION, self.integration_info())

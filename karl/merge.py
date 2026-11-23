@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from .entry import GAME_PAK_PREFIX
 
@@ -16,7 +14,6 @@ PAK_NAME = f"{GAME_PAK_PREFIX}integration_9999_P.pak"
 STAMP_NAME = f"{GAME_PAK_PREFIX}integration.json"
 GAME_PAKS = ("FSD-WindowsNoEditor.pak", "FSD-WinGDK.pak")
 TOOL = "karl-merge.exe" if sys.platform == "win32" else "karl-merge"
-UE4SS_BACKUP = "_karl_backup_ue4ss"
 MINT_VERSION = "0.2.10"
 APPROVALS = ("Verified", "Approved", "Sandbox")
 _HERE = Path(__file__).resolve().parent
@@ -140,22 +137,3 @@ def build(paks_dir: Path, mods: list[tuple[str, list[Path]]], version: str,
     (paks_dir / STAMP_NAME).write_text(
         json.dumps({"fingerprint": want, "skipped": skipped}, ensure_ascii=False), encoding="utf-8")
     return skipped
-
-
-def karl_ue4ss_active(win64: Path, ue4ss: Optional[Path]) -> bool:
-    return (ue4ss is not None and (ue4ss / "Mods" / "KarlLoader").is_dir()
-            and (win64 / "dwmapi.dll").is_file())
-
-
-def retire_ue4ss(fsd: Path, win64: Path, ue4ss: Optional[Path],
-                 log: Callable[[str], None] = lambda s: None) -> Optional[Path]:
-    if not karl_ue4ss_active(win64, ue4ss):
-        return None
-    backup = fsd / UE4SS_BACKUP / "Binaries" / "Win64"
-    backup.mkdir(parents=True, exist_ok=True)
-    dest = backup / "dwmapi.dll"
-    if dest.exists():
-        dest = backup / f"dwmapi_{datetime.now():%Y%m%d%H%M%S}.dll"
-    shutil.move(str(win64 / "dwmapi.dll"), str(dest))
-    log(f"UE4SS disabled: dwmapi.dll moved to {dest.parent}")
-    return dest

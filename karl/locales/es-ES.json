@@ -380,7 +380,6 @@
   "scale.restart": "El nuevo tamaño se aplica al reiniciar Karl. ¿Reiniciar ahora?",
   "crash.watch": "Avisarme cuando DRG se cierre por un fallo",
   "crash.title": "DRG se cerró por un fallo",
-  "crash.kind_ue4ss": "archivo de fallo de UE4SS",
   "crash.kind_game": "informe de fallo del juego",
   "crash.intro": "DRG falló a las {when} ({kind}). Si vuelve a pasar, Karl puede ayudarte a encontrar el mod que lo causa.",
   "crash.error": "Error del registro del juego:",

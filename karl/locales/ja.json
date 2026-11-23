@@ -380,7 +380,6 @@
   "scale.restart": "新しいサイズは Karl の再起動後に反映されます。今すぐ再起動しますか?",
   "crash.watch": "DRG がクラッシュしたら知らせる",
   "crash.title": "DRG がクラッシュで終了しました",
-  "crash.kind_ue4ss": "UE4SS のクラッシュファイル",
   "crash.kind_game": "ゲームのクラッシュレポート",
   "crash.intro": "DRG が {when} にクラッシュしました({kind})。また起きる場合は、原因の Mod を Karl が探すお手伝いをします。",
   "crash.error": "ゲームのログのエラー:",

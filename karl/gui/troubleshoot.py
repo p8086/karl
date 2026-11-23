@@ -29,7 +29,7 @@ class CrashDialog(tk.Toplevel):
         tk.Label(self, text=tr("crash.title"), bg=BG, fg=DANGER, font=(FONT, 13, "bold"),
                  anchor="w").pack(fill="x")
         when = datetime.fromtimestamp(found.get("time") or time.time()).strftime("%H:%M")
-        kind = tr("crash.kind_ue4ss") if found.get("ue4ss") else tr("crash.kind_game")
+        kind = tr("crash.kind_game")
         tk.Label(self, text=tr("crash.intro", when=when, kind=kind), bg=BG, fg=MUTED,
                  font=(FONT, 9), anchor="w", justify="left", wraplength=px(600)).pack(
             fill="x", pady=(4, 8))

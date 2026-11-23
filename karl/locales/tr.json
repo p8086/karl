@@ -380,7 +380,6 @@
   "scale.restart": "Yeni boyut Karl yeniden başlatılınca uygulanır. Şimdi yeniden başlatılsın mı?",
   "crash.watch": "DRG çökünce beni uyar",
   "crash.title": "DRG bir çökme nedeniyle kapandı",
-  "crash.kind_ue4ss": "UE4SS çökme dosyası",
   "crash.kind_game": "oyunun çökme raporu",
   "crash.intro": "DRG saat {when} sularında çöktü ({kind}). Yine olursa Karl, buna yol açan modu bulmana yardım eder.",
   "crash.error": "Oyun günlüğündeki hata:",

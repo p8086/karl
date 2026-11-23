@@ -1980,7 +1980,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         self.patch(gui.app.game, "launch", lambda: None)
         shown = []
         self.patch(gui.app, "CrashDialog", lambda a, found: shown.append(found))
-        found = {"time": 1.0, "files": ["x"], "detail": "Unhandled Exception: boom", "ue4ss": True}
+        found = {"time": 1.0, "files": ["x"], "detail": "Unhandled Exception: boom"}
         result = {"value": found}
         self.patch(gui.app.crash, "find_crash", lambda paks, since: result["value"])
         app.withdraw_called = []
@@ -2027,7 +2027,7 @@ class CrashBisectNewsGuiTests(GuiBase):
         app.lib.history.add("session_ok", folder=app.lib.active_folder)
         app.lib.apply({30: False})
         dlg = gui.troubleshoot.CrashDialog(app, {"time": 1700000000, "files": ["x"],
-                                    "detail": "Unhandled Exception: boom", "ue4ss": False})
+                                    "detail": "Unhandled Exception: boom"})
         self.assertIn("boom", dlg.text.buf)
         self.assertIn("Mod 30", dlg.text.buf)
         tm = gui.timemachine.TimeMachineDialog(app.mine)

@@ -380,7 +380,6 @@
   "scale.restart": "Noua dimensiune se aplică la repornirea lui Karl. Repornești acum?",
   "crash.watch": "Avertizează-mă când DRG se blochează",
   "crash.title": "DRG s-a închis din cauza unei erori",
-  "crash.kind_ue4ss": "fișier de eroare UE4SS",
   "crash.kind_game": "raport de eroare al jocului",
   "crash.intro": "DRG s-a închis cu eroare la {when} ({kind}). Dacă se repetă, Karl te ajută să găsești modul care o cauzează.",
   "crash.error": "Eroare din jurnalul jocului:",

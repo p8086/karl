@@ -226,7 +226,7 @@ Many mods (Mod Hub, HUDs, libraries like DRGLib) have two startup blueprints, `/
 - the integration blueprints normally get the list of mods from a DLL that also tags the lobby name: Karl uses no DLL, it writes the list straight into the blueprint and turns off the check that would otherwise close your lobby and leave you in a solo game;
 - the pak is rebuilt only when something changes (mods, their order, a game update) and is removed when no mod is active. Mods that can't be read are left out and listed in the log and in **Diagnostics**.
 
-If you used an older Karl, the UE4SS it installed is switched off by itself the first time: its `dwmapi.dll` is moved to `FSD\_karl_backup_ue4ss`, nothing is deleted. If Karl finds the files of another mod loader (for example a hook `x3daudio1_7.dll`, its own UE4SS variant or a `mods_P.pak`) it moves them to `FSD\_karl_backup_altri_loader`, without deleting them. **Settings → Rebuild mod integration** builds the pak again from scratch.
+If Karl finds the files of another mod loader (for example a hook `x3daudio1_7.dll` or `dwmapi.dll`, or a `mods_P.pak`) it moves them to `FSD\_karl_backup_altri_loader`, without deleting them. **Settings → Rebuild mod integration** builds the pak again from scratch.
 
 Two things to keep in mind:
 
@@ -297,7 +297,6 @@ karl/history.py          change history
 karl/proton.py           Linux: finding the Proton prefix
 karl/game.py             starting, detecting and closing DRG (Windows and Linux)
 karl/merge.py            integration pak (runs karl-merge)
-karl/integration.py      game folder paths, old UE4SS detection
 tools/merge/             karl-merge, the integration tool (Rust)
 karl/crash.py            crash detection
 karl/bisect.py           problem mod search

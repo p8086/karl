@@ -11,7 +11,7 @@ os.environ["XDG_CONFIG_HOME"] = str(TMP / "cfg")
 os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from karl import game, merge, pakfile, proton
+from karl import game, merge, pakfile
 from karl.config import Config
 from karl.library import Library
 from karl.modio import ModioError
@@ -163,22 +163,6 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.built()["mods"], ["hud"])
 
     @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
-    def test_old_karl_ue4ss_is_disabled(self):
-        ue = self.win64 / "ue4ss"
-        (ue / "Mods" / "KarlLoader" / "Scripts").mkdir(parents=True)
-        (ue / "UE4SS.dll").write_bytes(b"ue4ss")
-        (self.win64 / "dwmapi.dll").write_bytes(b"proxy")
-        lib = Library(Config(paks_dir=str(self.paks)))
-        self.assertTrue(lib.integration_outdated())
-        lib.install_integration()
-        self.assertFalse((self.win64 / "dwmapi.dll").exists())
-        backup = self.fsd / merge.UE4SS_BACKUP / "Binaries" / "Win64" / "dwmapi.dll"
-        self.assertEqual(backup.read_bytes(), b"proxy")
-        self.assertTrue((ue / "UE4SS.dll").exists())
-        self.assertFalse(lib.integration_outdated())
-        self.assertEqual(lib.foreign_loader_files(), [])
-
-    @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
     def test_skipped_mods_and_missing_tool(self):
         lib = Library(Config(paks_dir=str(self.paks)))
         self.add(lib, "broken")
@@ -222,41 +206,6 @@ class IntegrationTests(unittest.TestCase):
         installed = self.paks / e.installed_paks[0]
         self.assertIn("FSD/AssetRegistry.krl", pakfile.list_files(installed))
         self.assertIn("FSD/AssetRegistry.bin", pakfile.list_files(Path(e.cached_paks[0])))
-
-
-USER_REG = """WINE REGISTRY Version 2
-;; All keys relative to \\User\\S-1-5-21-0-0-0-1000
-
-#arch=win64
-
-[Control Panel\\Desktop] 1700000000
-#time=1da1b2c3d4e5f60
-"FontSmoothing"="2"
-
-[Software\\Wine\\Drivers] 1700000000
-#time=1da1b2c3d4e5f60
-"Audio"="pulse"
-"""
-
-
-class ProtonTests(unittest.TestCase):
-    def setUp(self):
-        self.pfx = Path(tempfile.mkdtemp()) / "pfx"
-
-    def make_prefix(self, text=USER_REG):
-        self.pfx.mkdir(parents=True)
-        (self.pfx / "user.reg").write_text(text)
-
-    def test_existing_section(self):
-        self.make_prefix(USER_REG + '\n[Software\\\\Wine\\\\DllOverrides] 1700000001\n'
-                         '#time=1da1b2c3d4e5f61\n"d3d11"="native"\n"dwmapi"="builtin"\n')
-        self.assertFalse(proton.has_override(self.pfx))
-        self.assertTrue(proton.set_override(self.pfx))
-        reg = (self.pfx / "user.reg").read_text()
-        self.assertIn('"d3d11"="native"', reg)
-        self.assertIn('"dwmapi"="native,builtin"', reg)
-        self.assertNotIn('"dwmapi"="builtin"', reg)
-        self.assertEqual(reg.count("DllOverrides]"), 1)
 
 
 class GameProcessTests(unittest.TestCase):
