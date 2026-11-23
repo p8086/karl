@@ -562,13 +562,15 @@ class Tests(unittest.TestCase):
         f = self.paks.parent / "mia.pak"
         f.write_bytes(b"x")
         local = lib.add_local_file(str(f))
-        lib.set_enabled(e.mod_id, False)
         out = self.paks.parent / "elenco.txt"
         self.assertEqual(lib.export_list(out), 2)
-        text = out.read_text(encoding="utf-8")
-        self.assertIn("[ ] Test Mod | Approved | 1.0 | ", text)
-        self.assertIn(str(f), text)
-        self.assertIn("[x] mia |", text)
+        lines = out.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(lines[0].startswith("Karl "))
+        self.assertEqual(lines[1], "")
+        self.assertEqual(sorted(lines[2:]), sorted([e.url or "https://mod.io/g/drg/m/test-mod", str(f)]))
+        lib.set_enabled(e.mod_id, False)
+        self.assertEqual(lib.export_list(out), 1)
+        self.assertEqual(out.read_text(encoding="utf-8").splitlines()[2:], [str(f)])
         ranks = sorted([local, e], key=lib.approval_rank)
         self.assertEqual(ranks, [e, local])
 

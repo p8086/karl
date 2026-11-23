@@ -195,15 +195,15 @@ class FoldersMixin:
 
     def export_list(self, path: Path) -> int:
         self._sync_folders()
-        order = [i for i in self.folders.get(self.active_folder, {}) if i in self.mods]
+        order = [i for i, on in self.folders.get(self.active_folder, {}).items()
+                 if i in self.mods and self.mods[i].enabled]
         lines = [f"Karl {VERSION} - {self.active_folder} - {datetime.now():%Y-%m-%d %H:%M}", ""]
-        for n, i in enumerate(order, 1):
+        for i in order:
             e = self.mods[i]
-            where = e.file_path or ", ".join(Path(p).name for p in e.cached_paks) \
-                if e.source == SOURCE_FILE else e.url or f"https://mod.io/g/drg/m/{e.slug}"
-            kind = tr("mode.file") if e.source == SOURCE_FILE else (e.approval or "-")
-            mark = "x" if e.enabled else " "
-            lines.append(f"{n:>3}. [{mark}] {e.name} | {kind} | {e.version or '-'} | {where}")
+            if e.source == SOURCE_FILE:
+                lines.append(e.file_path or ", ".join(e.cached_paks))
+            else:
+                lines.append(e.url or f"https://mod.io/g/drg/m/{e.slug}")
         Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         return len(order)
 

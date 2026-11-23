@@ -121,7 +121,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Choose version.** To go back further, right-click a mod from mod.io and choose **Choose version…**: Karl lists every file published on mod.io with its date and size, and installs the one you pick. An older version stays locked (🔒) like with Previous version; picking the newest one unlocks it again.
 
-**Export list.** **Export list** (next to the folder buttons) saves the active folder as a text file: load position, on or off, name, category, version and the mod.io link, or the file path for your own .pak files. Handy to share your setup or to report a problem.
+**Export list.** **Export list** (next to the folder buttons) saves the active mods of the folder as a text file, in load order: a title line, then one mod per line, the mod.io link or the file path for your own .pak files. Easy to copy and share.
 
 **Time machine.** Every time you press **Install and save** (also through Play or when switching folder) Karl takes a snapshot of the active folder: which mods it had, in what order, on or off and at which version. If nothing changed, no new snapshot is made. **🕘 Time machine** lists them by date, with a summary of what changed each time (mods added or removed, versions, switches, order). Pick a moment and press **Restore**: the folder goes back exactly as it was, even with mods you had removed meanwhile. Mods brought back to a different version stay locked (🔒) until you press **Previous version** to return to the latest one. Each version's .pak files are stored only once (`~/.cache/karl/istantanee/`) and Karl keeps the last 50 snapshots of each folder (a folder you use a lot doesn't erase the others' history; if you rename a folder, its history follows it).
 
