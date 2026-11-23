@@ -13,13 +13,33 @@ Get the latest version from the **Releases** page. No Python needed.
 
 ## Getting started
 
-1. **Sign in.** Click **Sign in with mod.io**, create a *personal access token* on mod.io (Permissions: **User actions**, Scope: **Read** and **Write**) and paste it into Karl. The token stays on your PC.
+1. **Sign in** with your mod.io token (see below).
 2. **Find mods.** In **Browse** search and filter mods like on the website, then press **🔗 Copy link** on the ones you want.
 3. **Add them.** In **My mods** the links land in the *Mod links* box: press **Add**. You can also paste links, or drop `.pak`/`.zip` files on the window.
 4. **Install.** Turn mods on or off with their switch, then press **💾 Install and save**.
 5. **Play.** Press **▶ Play**. Install and update mods with the game closed.
 
 ![The My mods tab](docs/screenshots/my-mods.png)
+
+## Signing in with mod.io
+
+Click **Sign in with mod.io** at the top right:
+
+1. Your mod.io account's *Access* page opens.
+2. Create a **personal access token** named "Karl": under Permissions tick only **User actions**, under Scope **Read** and **Write**, under Expiry the longest duration.
+3. Paste it into Karl. It is checked right away and your name and avatar appear at the top.
+
+In **Settings → mod.io token** you see which account you are connected to and the masked token (with **Show** and **Copy**), plus the expiry date read from the token, with a warning when fewer than 7 days are left. There are also **Verify**, **Change token…**, **Remove** and **Manage on mod.io** buttons. The token stays on your PC only. You can revoke it any time on mod.io or with **Sign out**.
+
+<p align="center"><img src="docs/screenshots/settings-token.png" alt="Settings: mod.io token, language, game folder and maintenance" width="420"></p>
+
+Why no email login? mod.io only allows it for apps using the game's official API key (the DRG developers' one). Third-party apps sign in with a token created by the user.
+
+**If you get error 401**, mod.io rejects the token. Karl also shows mod.io's exact code, for example `(401 · 11005)` for an expired or revoked token. What to do:
+
+1. **Verify** in Settings → mod.io token checks both the account and reading DRG mods, and tells you which one fails.
+2. If the account works but reading mods doesn't, create a new token ticking both **User actions** and **All my mods** under Permissions, with Read and Write.
+3. Make sure you copied the whole token: mod.io shows it only once.
 
 ## Features
 
@@ -46,7 +66,6 @@ If Karl finds files of another mod loader (`x3daudio1_7.dll`, `dwmapi.dll`, `mod
 
 ## Troubleshooting
 
-- **Error 401:** mod.io rejects the token. Use **Settings → mod.io token → Verify**; if needed create a new token with **User actions** and **All my mods**, Read and Write.
 - **Something doesn't work:** **Settings → Diagnostics…** checks the game folder, the mods, conflicts, the integration and mod.io. Attach its report to an issue.
 - **Logs:** Karl's log is `~/.cache/karl/karl.log` (Windows: `C:\Users\<you>\.cache\karl\karl.log`), the game's is `FSD\Saved\Logs\FSD.log`.
 
