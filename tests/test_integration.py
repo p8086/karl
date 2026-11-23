@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import struct
 import sys
 import tempfile
@@ -195,6 +196,23 @@ class IntegrationTests(unittest.TestCase):
         other = self.root / "o.pak"
         other.write_bytes(make_pak("../../../FSD/Content/X/", {"/": ["AssetRegistry.bin"]}))
         self.assertFalse(pakfile.hide_asset_registry(other))
+
+    @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
+    def test_old_karl_loader_is_turned_off(self):
+        (self.win64 / "ue4ss" / "Mods" / "KarlLoader").mkdir(parents=True)
+        (self.win64 / "dwmapi.dll").write_bytes(b"proxy")
+        (self.win64 / "x3daudio1_7.dll").write_bytes(b"hook")
+        lib = Library(Config(paks_dir=str(self.paks)))
+        self.assertEqual([p.name for p in lib.foreign_loader_files()], ["x3daudio1_7.dll"])
+        self.assertTrue(lib.integration_outdated())
+        lib.install_integration()
+        self.assertFalse((self.win64 / "dwmapi.dll").exists())
+        backup = self.fsd / Library.BACKUP_DIR / "Binaries" / "Win64" / "dwmapi.dll"
+        self.assertEqual(backup.read_bytes(), b"proxy")
+        self.assertFalse(lib.integration_outdated())
+        (self.win64 / "dwmapi.dll").write_bytes(b"altro")
+        shutil.rmtree(self.win64 / "ue4ss")
+        self.assertIn("dwmapi.dll", [p.name for p in lib.foreign_loader_files()])
 
     def test_hide_shaders(self):
         import hashlib

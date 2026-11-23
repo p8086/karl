@@ -457,5 +457,6 @@
   "versions.loading": "Caut versiuni pe mod.io...",
   "versions.installing": "Instalez versiunea aleasă...",
   "versions.installed": "{name}: versiunea {version} a fost instalată",
-  "versions.none": "Nu există nicio versiune disponibilă pe mod.io pentru acest mod."
+  "versions.none": "Nu există nicio versiune disponibilă pe mod.io pentru acest mod.",
+  "loader.old_retired": "Vechiul încărcător de moduri blueprint al lui Karl a fost dezactivat: dwmapi.dll a fost mutat în {path} (nu s-a șters nimic)."
 }

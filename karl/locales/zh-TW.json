@@ -457,5 +457,6 @@
   "versions.loading": "正在 mod.io 上尋找版本...",
   "versions.installing": "正在安裝所選版本...",
   "versions.installed": "{name}：已安裝版本 {version}",
-  "versions.none": "此模組在 mod.io 上沒有可用版本。"
+  "versions.none": "此模組在 mod.io 上沒有可用版本。",
+  "loader.old_retired": "已關閉 Karl 舊的藍圖模組載入器：其 dwmapi.dll 已移動到 {path}（沒有刪除任何檔案）。"
 }

@@ -457,5 +457,6 @@
   "versions.loading": "Looking for versions on mod.io...",
   "versions.installing": "Installing the chosen version...",
   "versions.installed": "{name}: version {version} installed",
-  "versions.none": "No version available on mod.io for this mod."
+  "versions.none": "No version available on mod.io for this mod.",
+  "loader.old_retired": "Karl's old blueprint loader has been turned off: its dwmapi.dll was moved to {path} (nothing deleted)."
 }

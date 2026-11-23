@@ -457,5 +457,6 @@
   "versions.loading": "Ищу версии на mod.io...",
   "versions.installing": "Устанавливаю выбранную версию...",
   "versions.installed": "{name}: установлена версия {version}",
-  "versions.none": "Для этого мода на mod.io нет доступных версий."
+  "versions.none": "Для этого мода на mod.io нет доступных версий.",
+  "loader.old_retired": "Старый загрузчик blueprint-модов Karl отключён: его dwmapi.dll перемещён в {path} (ничего не удалено)."
 }

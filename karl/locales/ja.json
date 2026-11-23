@@ -457,5 +457,6 @@
   "versions.loading": "mod.io でバージョンを検索中...",
   "versions.installing": "選択したバージョンをインストール中...",
   "versions.installed": "{name}: バージョン {version} をインストールしました",
-  "versions.none": "このMODには mod.io で利用できるバージョンがありません。"
+  "versions.none": "このMODには mod.io で利用できるバージョンがありません。",
+  "loader.old_retired": "Karl の旧ブループリントローダーを無効にしました。dwmapi.dll を {path} に移動しました（削除はしていません）。"
 }

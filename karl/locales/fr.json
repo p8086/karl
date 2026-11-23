@@ -457,5 +457,6 @@
   "versions.loading": "Recherche des versions sur mod.io...",
   "versions.installing": "Installation de la version choisie...",
   "versions.installed": "{name} : version {version} installée",
-  "versions.none": "Aucune version disponible sur mod.io pour ce mod."
+  "versions.none": "Aucune version disponible sur mod.io pour ce mod.",
+  "loader.old_retired": "L'ancien chargeur de mods blueprint de Karl a été désactivé : sa dwmapi.dll a été déplacée dans {path} (rien n'a été supprimé)."
 }

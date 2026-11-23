@@ -457,5 +457,6 @@
   "versions.loading": "Szukam wersji na mod.io...",
   "versions.installing": "Instaluję wybraną wersję...",
   "versions.installed": "{name}: zainstalowano wersję {version}",
-  "versions.none": "Brak dostępnych wersji tego moda na mod.io."
+  "versions.none": "Brak dostępnych wersji tego moda na mod.io.",
+  "loader.old_retired": "Stary loader modów blueprint Karla został wyłączony: jego dwmapi.dll przeniesiono do {path} (nic nie usunięto)."
 }

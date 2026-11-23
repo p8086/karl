@@ -457,5 +457,6 @@
   "versions.loading": "mod.io'da sürümler aranıyor...",
   "versions.installing": "Seçilen sürüm kuruluyor...",
   "versions.installed": "{name}: {version} sürümü kuruldu",
-  "versions.none": "Bu mod için mod.io'da kullanılabilir sürüm yok."
+  "versions.none": "Bu mod için mod.io'da kullanılabilir sürüm yok.",
+  "loader.old_retired": "Karl'ın eski blueprint mod yükleyicisi kapatıldı: dwmapi.dll dosyası {path} konumuna taşındı (hiçbir şey silinmedi)."
 }

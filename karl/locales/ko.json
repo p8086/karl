@@ -457,5 +457,6 @@
   "versions.loading": "mod.io에서 버전을 찾는 중...",
   "versions.installing": "선택한 버전을 설치하는 중...",
   "versions.installed": "{name}: 버전 {version} 설치됨",
-  "versions.none": "이 모드는 mod.io에 사용 가능한 버전이 없습니다."
+  "versions.none": "이 모드는 mod.io에 사용 가능한 버전이 없습니다.",
+  "loader.old_retired": "Karl의 이전 블루프린트 로더를 껐습니다. dwmapi.dll을 {path}(으)로 옮겼습니다(삭제한 것은 없습니다)."
 }

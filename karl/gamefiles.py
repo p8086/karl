@@ -28,7 +28,9 @@ class GameFilesMixin:
             fsd = self.mods_dir().parent
         except ModioError:
             return []
-        return [fsd / rel for rel in self.FOREIGN_LOADER_FILES if (fsd / rel).is_file()]
+        old = self.old_karl_loader()
+        return [fsd / rel for rel in self.FOREIGN_LOADER_FILES
+                if (fsd / rel).is_file() and fsd / rel != old]
 
     def disable_foreign_loader(self) -> Path:
         fsd = self.mods_dir().parent
@@ -245,6 +247,31 @@ class GameFilesMixin:
                  for m in [re.search(r"_(\d+)_P\.pak$", n)] if m]
         return max(found, default=0)
 
+    OLD_LOADER_DIRS = ("Binaries/Win64/ue4ss/Mods/KarlLoader", "Binaries/Win64/Mods/KarlLoader")
+
+    def old_karl_loader(self) -> Optional[Path]:
+        try:
+            fsd = self.mods_dir().parent
+        except ModioError:
+            return None
+        proxy = fsd / "Binaries" / "Win64" / "dwmapi.dll"
+        if proxy.is_file() and any((fsd / d).is_dir() for d in self.OLD_LOADER_DIRS):
+            return proxy
+        return None
+
+    def retire_old_loader(self, log: Callable[[str], None] = lambda s: None) -> Optional[Path]:
+        proxy = self.old_karl_loader()
+        if proxy is None or game.is_running():
+            return None
+        fsd = self.mods_dir().parent
+        dest = fsd / self.BACKUP_DIR / "Binaries" / "Win64" / proxy.name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            dest = dest.with_name(f"{dest.stem}_{datetime.now():%Y%m%d%H%M%S}{dest.suffix}")
+        shutil.move(str(proxy), str(dest))
+        log(tr("loader.old_retired", path=dest.parent))
+        return dest
+
     def integration_outdated(self) -> bool:
         if not self.config.paks_dir:
             return False
@@ -252,6 +279,8 @@ class GameFilesMixin:
             paks = self.paks_dir()
         except ModioError:
             return False
+        if self.old_karl_loader() is not None:
+            return True
         return merge.outdated(paks, self.integration_mods(), VERSION)
 
     def integration_skipped(self) -> list:
@@ -265,6 +294,7 @@ class GameFilesMixin:
         if not self.config.paks_dir:
             return None
         paks = self.paks_dir()
+        self.retire_old_loader(log=log)
         mods = self.integration_mods()
         if not force and not merge.outdated(paks, mods, VERSION):
             return None

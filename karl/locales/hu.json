@@ -457,5 +457,6 @@
   "versions.loading": "Verziók keresése a mod.io-n...",
   "versions.installing": "A kiválasztott verzió telepítése...",
   "versions.installed": "{name}: {version} verzió telepítve",
-  "versions.none": "Ehhez a modhoz nincs elérhető verzió a mod.io-n."
+  "versions.none": "Ehhez a modhoz nincs elérhető verzió a mod.io-n.",
+  "loader.old_retired": "Karl régi blueprint modbetöltője ki lett kapcsolva: a dwmapi.dll ide került: {path} (semmi sem lett törölve)."
 }

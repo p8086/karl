@@ -457,5 +457,6 @@
   "versions.loading": "正在 mod.io 上查找版本...",
   "versions.installing": "正在安装所选版本...",
   "versions.installed": "{name}：已安装版本 {version}",
-  "versions.none": "该模组在 mod.io 上没有可用版本。"
+  "versions.none": "该模组在 mod.io 上没有可用版本。",
+  "loader.old_retired": "已关闭 Karl 旧的蓝图模组加载器：其 dwmapi.dll 已移动到 {path}（没有删除任何文件）。"
 }
