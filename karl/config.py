@@ -24,7 +24,6 @@ class Config:
     language: str = "auto"
     ignore_foreign_loader: bool = False
     ignore_modio_subs: bool = False
-    ignore_integration: bool = False
     dev_mode: bool = False
     dev_restart: bool = False
     auto_check_updates: bool = False
