@@ -442,5 +442,21 @@
   "mine.close_game_first": "Закрийте DRG перед встановленням або збереженням: гра використовує файли модів, і Karl не може їх змінити.",
   "integ.no_tool": "Немає інструмента інтеграції (karl-merge): завантаж повний реліз Karl з GitHub.",
   "integ.failed": "Не вдалося зібрати інтеграцію модів: {error}",
-  "integ.skipped": "{name}: не ввійшов до інтеграції ({error})"
+  "integ.skipped": "{name}: не ввійшов до інтеграції ({error})",
+  "mine.sort_approval": "Категорія",
+  "list.export": "Експорт списку",
+  "list.exported": "Список із {n} модів збережено в {path}",
+  "versions.button": "Вибрати версію…",
+  "versions.title": "Версії {name}",
+  "versions.hint": "Вибери версію для встановлення. Якщо вибереш старішу, Karl закріпить її і не оновлюватиме сам.",
+  "versions.col_version": "Версія",
+  "versions.col_date": "Дата",
+  "versions.col_size": "Розмір",
+  "versions.col_state": "Стан",
+  "versions.current": "використовується",
+  "versions.install": "Встановити",
+  "versions.loading": "Шукаю версії на mod.io...",
+  "versions.installing": "Встановлюю вибрану версію...",
+  "versions.installed": "{name}: встановлено версію {version}",
+  "versions.none": "Для цього моду на mod.io немає доступних версій."
 }

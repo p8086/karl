@@ -529,6 +529,49 @@ class Tests(unittest.TestCase):
         local = lib.add_local_file(str(f))
         self.assertFalse(lib.can_rollback(local.mod_id))
 
+    def test_choose_version(self):
+        lib = self.lib
+        FakeClient.version = {"file_id": 3, "v": "3.0"}
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
+        FakeClient.files = [
+            {"id": 3, "version": "3.0", "date_added": 30, "filesize": 10,
+             "download": {"binary_url": "https://x/v3.0.zip"}},
+            {"id": 2, "version": "2.0", "date_added": 20, "filesize": 9,
+             "download": {"binary_url": "https://x/v2.0.zip"}},
+            {"id": 9, "version": "rotta", "download": {}},
+        ]
+        versions = lib.available_versions(e.mod_id)
+        self.assertEqual([v["file_id"] for v in versions], [3, 2])
+        self.assertEqual([v["current"] for v in versions], [True, False])
+        lib.install_version(e.mod_id, 2)
+        self.assertEqual((e.file_id, e.version, e.hold), (2, "2.0", True))
+        self.assertTrue(lib.has_previous(e.mod_id))
+        self.assertEqual(lib.find_updates()["updates"], [])
+        lib.install_version(e.mod_id, 3)
+        self.assertEqual((e.file_id, e.hold), (3, False))
+        f = self.paks.parent / "mia.pak"
+        f.write_bytes(b"x")
+        local = lib.add_local_file(str(f))
+        with self.assertRaises(modio.ModioError):
+            lib.available_versions(local.mod_id)
+
+    def test_export_list_and_category_order(self):
+        lib = self.lib
+        e = lib.add("https://mod.io/g/drg/m/test-mod")
+        e.approval = "Approved"
+        f = self.paks.parent / "mia.pak"
+        f.write_bytes(b"x")
+        local = lib.add_local_file(str(f))
+        lib.set_enabled(e.mod_id, False)
+        out = self.paks.parent / "elenco.txt"
+        self.assertEqual(lib.export_list(out), 2)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("[ ] Test Mod | Approved | 1.0 | ", text)
+        self.assertIn(str(f), text)
+        self.assertIn("[x] mia |", text)
+        ranks = sorted([local, e], key=lib.approval_rank)
+        self.assertEqual(ranks, [e, local])
+
     def test_dev_reimport(self):
         import os, time
         src = self.paks.parent / "dev"

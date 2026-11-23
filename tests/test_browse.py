@@ -1311,6 +1311,40 @@ class FeatureTests(GuiBase):
                    if it and it["label"] == gui.app.tr("mine.ctx_position"))
         self.assertEqual(pos["state"], "disabled")
 
+    def test_choose_version_and_export_list(self):
+        app = self.make_app()
+        mine, lib = app.mine, app.lib
+        lib.add("https://mod.io/g/drg/m/mod-50")
+        mine.refresh()
+        tr = gui.app.tr
+        self.assertIn(tr("mine.sort_approval"), mine.sort_labels)
+        mine.tree.selection_set(["50"])
+        chosen = []
+        lib.install_version = lambda mid, fid, **k: chosen.append((mid, fid))
+        lib.available_versions = lambda mid: [
+            {"file_id": 950, "version": "2.0", "date": 1700000000, "size": 1024, "current": True}]
+        mine.choose_version()
+        for _ in range(50):
+            pump(app, 20)
+            if getattr(mine, "version_dialog", None) and not app.busy:
+                break
+            time.sleep(0.05)
+        dlg = mine.version_dialog
+        self.assertEqual(dlg.tree.get_children(), ["950"])
+        dlg.choose()
+        for _ in range(50):
+            pump(app, 20)
+            if chosen and not app.busy:
+                break
+            time.sleep(0.05)
+        self.assertEqual(chosen, [(50, 950)])
+        out = Path(tempfile.mkdtemp()) / "elenco.txt"
+        fd = sys.modules["tkinter.filedialog"]
+        fd.answers[:] = [str(out)]
+        mine.export_list()
+        self.assertIn("mod-50", out.read_text(encoding="utf-8"))
+        self.assertEqual(app.status.get(), tr("list.exported", n=1, path=str(out)))
+
     def test_install_blocked_while_game_runs(self):
         app = self.make_app()
         mine, lib = app.mine, app.lib

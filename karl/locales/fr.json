@@ -442,5 +442,21 @@
   "mine.close_game_first": "Ferme DRG avant d'installer ou d'enregistrer : le jeu utilise les fichiers des mods, Karl ne peut pas les modifier.",
   "integ.no_tool": "L'outil d'intégration (karl-merge) est manquant : télécharge la version complète de Karl sur GitHub.",
   "integ.failed": "Échec de l'intégration des mods : {error}",
-  "integ.skipped": "{name} : exclu de l'intégration ({error})"
+  "integ.skipped": "{name} : exclu de l'intégration ({error})",
+  "mine.sort_approval": "Catégorie",
+  "list.export": "Exporter la liste",
+  "list.exported": "Liste de {n} mods enregistrée dans {path}",
+  "versions.button": "Choisir la version…",
+  "versions.title": "Versions de {name}",
+  "versions.hint": "Choisis la version à installer. Si tu en choisis une plus ancienne, Karl la bloque et ne la met pas à jour tout seul.",
+  "versions.col_version": "Version",
+  "versions.col_date": "Date",
+  "versions.col_size": "Taille",
+  "versions.col_state": "État",
+  "versions.current": "utilisée",
+  "versions.install": "Installer",
+  "versions.loading": "Recherche des versions sur mod.io...",
+  "versions.installing": "Installation de la version choisie...",
+  "versions.installed": "{name} : version {version} installée",
+  "versions.none": "Aucune version disponible sur mod.io pour ce mod."
 }

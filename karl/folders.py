@@ -4,11 +4,12 @@ import base64
 import json
 import shutil
 import zlib
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import paths
-from .entry import ModEntry, SOURCE_MODIO
+from . import VERSION, paths
+from .entry import ModEntry, SOURCE_FILE, SOURCE_MODIO
 from .i18n import tr
 from .modio import ModioError
 
@@ -184,6 +185,27 @@ class FoldersMixin:
                 failed.append(slug)
         self.save()
         return name, failed
+
+    APPROVAL_ORDER = {"Verified": 0, "Approved": 1, "Sandbox": 2}
+
+    def approval_rank(self, e: ModEntry) -> int:
+        if e.source == SOURCE_FILE:
+            return 4
+        return self.APPROVAL_ORDER.get(e.approval, 3)
+
+    def export_list(self, path: Path) -> int:
+        self._sync_folders()
+        order = [i for i in self.folders.get(self.active_folder, {}) if i in self.mods]
+        lines = [f"Karl {VERSION} - {self.active_folder} - {datetime.now():%Y-%m-%d %H:%M}", ""]
+        for n, i in enumerate(order, 1):
+            e = self.mods[i]
+            where = e.file_path or ", ".join(Path(p).name for p in e.cached_paks) \
+                if e.source == SOURCE_FILE else e.url or f"https://mod.io/g/drg/m/{e.slug}"
+            kind = tr("mode.file") if e.source == SOURCE_FILE else (e.approval or "-")
+            mark = "x" if e.enabled else " "
+            lines.append(f"{n:>3}. [{mark}] {e.name} | {kind} | {e.version or '-'} | {where}")
+        Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return len(order)
 
     PROFILE_FORMAT = "karl-profile"
 

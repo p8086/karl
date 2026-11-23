@@ -442,5 +442,21 @@
   "mine.close_game_first": "安装或保存前请关闭 DRG：游戏正在使用模组文件，Karl 无法修改它们。",
   "integ.no_tool": "缺少集成工具 (karl-merge)：请从 GitHub 下载完整的 Karl 版本。",
   "integ.failed": "模组集成失败：{error}",
-  "integ.skipped": "{name}：未纳入集成（{error}）"
+  "integ.skipped": "{name}：未纳入集成（{error}）",
+  "mine.sort_approval": "分类",
+  "list.export": "导出列表",
+  "list.exported": "已将 {n} 个模组的列表保存到 {path}",
+  "versions.button": "选择版本…",
+  "versions.title": "{name} 的版本",
+  "versions.hint": "选择要安装的版本。如果选择旧版本，Karl 会锁定它，不会自动更新。",
+  "versions.col_version": "版本",
+  "versions.col_date": "日期",
+  "versions.col_size": "大小",
+  "versions.col_state": "状态",
+  "versions.current": "使用中",
+  "versions.install": "安装",
+  "versions.loading": "正在 mod.io 上查找版本...",
+  "versions.installing": "正在安装所选版本...",
+  "versions.installed": "{name}：已安装版本 {version}",
+  "versions.none": "该模组在 mod.io 上没有可用版本。"
 }

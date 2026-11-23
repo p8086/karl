@@ -442,5 +442,21 @@
   "mine.close_game_first": "Yüklemeden veya kaydetmeden önce DRG'yi kapat: oyun mod dosyalarını kullanıyor, Karl bunları değiştiremez.",
   "integ.no_tool": "Entegrasyon aracı (karl-merge) eksik: Karl'ın tam sürümünü GitHub'dan indir.",
   "integ.failed": "Mod entegrasyonu başarısız: {error}",
-  "integ.skipped": "{name}: entegrasyonun dışında kaldı ({error})"
+  "integ.skipped": "{name}: entegrasyonun dışında kaldı ({error})",
+  "mine.sort_approval": "Kategori",
+  "list.export": "Listeyi dışa aktar",
+  "list.exported": "{n} modluk liste {path} konumuna kaydedildi",
+  "versions.button": "Sürüm seç…",
+  "versions.title": "{name} sürümleri",
+  "versions.hint": "Kurulacak sürümü seç. Eski bir sürüm seçersen Karl onu kilitler ve kendiliğinden güncellemez.",
+  "versions.col_version": "Sürüm",
+  "versions.col_date": "Tarih",
+  "versions.col_size": "Boyut",
+  "versions.col_state": "Durum",
+  "versions.current": "kullanımda",
+  "versions.install": "Kur",
+  "versions.loading": "mod.io'da sürümler aranıyor...",
+  "versions.installing": "Seçilen sürüm kuruluyor...",
+  "versions.installed": "{name}: {version} sürümü kuruldu",
+  "versions.none": "Bu mod için mod.io'da kullanılabilir sürüm yok."
 }

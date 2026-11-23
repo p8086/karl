@@ -442,5 +442,21 @@
   "mine.close_game_first": "Închide DRG înainte de a instala sau salva: jocul folosește fișierele modurilor, așa că Karl nu le poate modifica.",
   "integ.no_tool": "Lipsește instrumentul de integrare (karl-merge): descarcă versiunea completă Karl de pe GitHub.",
   "integ.failed": "Integrarea modurilor a eșuat: {error}",
-  "integ.skipped": "{name}: lăsat în afara integrării ({error})"
+  "integ.skipped": "{name}: lăsat în afara integrării ({error})",
+  "mine.sort_approval": "Categorie",
+  "list.export": "Exportă lista",
+  "list.exported": "Lista cu {n} moduri salvată în {path}",
+  "versions.button": "Alege versiunea…",
+  "versions.title": "Versiunile {name}",
+  "versions.hint": "Alege versiunea de instalat. Dacă alegi una mai veche, Karl o blochează și nu o actualizează singur.",
+  "versions.col_version": "Versiune",
+  "versions.col_date": "Dată",
+  "versions.col_size": "Dimensiune",
+  "versions.col_state": "Stare",
+  "versions.current": "în uz",
+  "versions.install": "Instalează",
+  "versions.loading": "Caut versiuni pe mod.io...",
+  "versions.installing": "Instalez versiunea aleasă...",
+  "versions.installed": "{name}: versiunea {version} a fost instalată",
+  "versions.none": "Nu există nicio versiune disponibilă pe mod.io pentru acest mod."
 }

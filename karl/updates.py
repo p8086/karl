@@ -48,6 +48,40 @@ class UpdatesMixin:
                 return f
         return None
 
+    def available_versions(self, mod_id: int) -> list[dict]:
+        e = self.mods.get(mod_id)
+        if e is None or e.source == SOURCE_FILE:
+            raise ModioError(tr("versions.none"))
+        if not self.config.token:
+            raise ModioError(tr("err.no_token"), status=401)
+        out = []
+        for f in self.client.list_modfiles(e.game_id, e.mod_id, limit=50):
+            if not (f.get("download") or {}).get("binary_url"):
+                continue
+            out.append({"file_id": f.get("id"), "version": f.get("version") or "-",
+                        "date": f.get("date_added") or 0, "size": f.get("filesize") or 0,
+                        "current": f.get("id") == e.file_id})
+        if not out:
+            raise ModioError(tr("versions.none"))
+        return out
+
+    def install_version(self, mod_id: int, file_id: int,
+                        log: Callable[[str], None] = lambda s: None,
+                        progress: Optional[Callable[[int, int], None]] = None) -> ModEntry:
+        e = self.mods[mod_id]
+        versions = self.available_versions(mod_id)
+        newest = versions[0]["file_id"]
+        if file_id != e.file_id:
+            mf = self.client.get_modfile(e.game_id, e.mod_id, file_id)
+            self._download(e, {"modfile": mf, "name_id": e.slug}, progress)
+            if e.enabled:
+                self._copy_to_game(e)
+        e.hold = file_id != newest
+        e.latest_version = ""
+        self.save()
+        log(tr("versions.installed", name=e.name, version=e.version or "-"))
+        return e
+
     def _fetch_previous(self, e: ModEntry,
                         progress: Optional[Callable[[int, int], None]]) -> None:
         mf = self.previous_modfile(e) if e.source != SOURCE_FILE and self.config.token else None

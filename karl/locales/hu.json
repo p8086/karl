@@ -442,5 +442,21 @@
   "mine.close_game_first": "Telepítés vagy mentés előtt zárd be a DRG-t: a játék használja a modfájlokat, ezért Karl nem tudja módosítani őket.",
   "integ.no_tool": "Hiányzik az integrációs eszköz (karl-merge): töltsd le a teljes Karl kiadást a GitHubról.",
   "integ.failed": "A modintegráció nem sikerült: {error}",
-  "integ.skipped": "{name}: kimaradt az integrációból ({error})"
+  "integ.skipped": "{name}: kimaradt az integrációból ({error})",
+  "mine.sort_approval": "Kategória",
+  "list.export": "Lista exportálása",
+  "list.exported": "{n} mod listája mentve ide: {path}",
+  "versions.button": "Verzió választása…",
+  "versions.title": "{name} verziói",
+  "versions.hint": "Válaszd ki a telepítendő verziót. Ha régebbit választasz, Karl zárolja, és magától nem frissíti.",
+  "versions.col_version": "Verzió",
+  "versions.col_date": "Dátum",
+  "versions.col_size": "Méret",
+  "versions.col_state": "Állapot",
+  "versions.current": "használatban",
+  "versions.install": "Telepítés",
+  "versions.loading": "Verziók keresése a mod.io-n...",
+  "versions.installing": "A kiválasztott verzió telepítése...",
+  "versions.installed": "{name}: {version} verzió telepítve",
+  "versions.none": "Ehhez a modhoz nincs elérhető verzió a mod.io-n."
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import tkinter as tk
 import webbrowser
 from pathlib import Path
@@ -373,3 +374,49 @@ class TagsDialog(tk.Toplevel):
             self.app.lib.update_tags(self.ids, add, remove)
         self.destroy()
         self.on_done()
+
+
+class VersionDialog(tk.Toplevel):
+    def __init__(self, app: App, mod_id: int, versions: list[dict],
+                 on_choose: Callable[[int, int], None]):
+        super().__init__(app)
+        self.app = app
+        self.mod_id = mod_id
+        self.on_choose = on_choose
+        self.title(tr("versions.title", name=app.lib.mods[mod_id].name))
+        self.configure(bg=BG)
+        self.transient(app)
+        safe_grab(self)
+        f = tk.Frame(self, bg=BG, padx=20, pady=16)
+        f.pack(fill="both", expand=True)
+        tk.Label(f, text=tr("versions.hint"), bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
+                 wraplength=px(460), justify="left").pack(fill="x")
+        cols = ("version", "date", "size", "state")
+        self.tree = ttk.Treeview(f, columns=cols, show="headings", height=min(12, len(versions)),
+                                 selectmode="browse")
+        for c, w in zip(cols, (180, 140, 90, 80)):
+            self.tree.heading(c, text=tr(f"versions.col_{c}"))
+            self.tree.column(c, width=px(w), anchor="w")
+        self.tree.pack(fill="both", expand=True, pady=(10, 0))
+        for v in versions:
+            when = time.strftime("%d/%m/%Y", time.localtime(v["date"])) if v["date"] else "-"
+            self.tree.insert("", "end", iid=str(v["file_id"]),
+                             values=(v["version"], when, human_size(v["size"]),
+                                     tr("versions.current") if v["current"] else ""))
+        current = next((v for v in versions if v["current"]), versions[0])
+        self.tree.selection_set([str(current["file_id"])])
+        self.tree.bind("<Double-1>", lambda _e: self.choose())
+        btns = tk.Frame(f, bg=BG)
+        btns.pack(fill="x", pady=(14, 0))
+        ttk.Button(btns, text=tr("versions.install"), style="Accent.TButton",
+                   command=self.choose).pack(side="right")
+        ttk.Button(btns, text=tr("common.cancel"), command=self.destroy).pack(
+            side="right", padx=(0, 8))
+
+    def choose(self) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        file_id = int(sel[0])
+        self.destroy()
+        self.on_choose(self.mod_id, file_id)

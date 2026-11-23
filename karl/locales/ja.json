@@ -442,5 +442,21 @@
   "mine.close_game_first": "インストールや保存の前に DRG を閉じてください。ゲームが MOD ファイルを使用中のため、Karl は変更できません。",
   "integ.no_tool": "統合ツール (karl-merge) がありません。GitHub から Karl の完全版をダウンロードしてください。",
   "integ.failed": "MOD統合に失敗しました: {error}",
-  "integ.skipped": "{name}: 統合から除外されました ({error})"
+  "integ.skipped": "{name}: 統合から除外されました ({error})",
+  "mine.sort_approval": "カテゴリー",
+  "list.export": "リストをエクスポート",
+  "list.exported": "{n} 個のMODのリストを {path} に保存しました",
+  "versions.button": "バージョンを選択…",
+  "versions.title": "{name} のバージョン",
+  "versions.hint": "インストールするバージョンを選んでください。古いバージョンを選ぶと、Karl はそれを固定し自動では更新しません。",
+  "versions.col_version": "バージョン",
+  "versions.col_date": "日付",
+  "versions.col_size": "サイズ",
+  "versions.col_state": "状態",
+  "versions.current": "使用中",
+  "versions.install": "インストール",
+  "versions.loading": "mod.io でバージョンを検索中...",
+  "versions.installing": "選択したバージョンをインストール中...",
+  "versions.installed": "{name}: バージョン {version} をインストールしました",
+  "versions.none": "このMODには mod.io で利用できるバージョンがありません。"
 }

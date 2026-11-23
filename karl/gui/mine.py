@@ -15,7 +15,7 @@ from ..theme import ACCENT, BG, BORDER, DANGER, FG, FONT, MUTED, ON_ACCENT, PANE
 from ..ui import px
 from ..widgets import check_button
 from .common import ASSETS, format_when
-from .dialogs import TagsDialog, WhatsNewDialog
+from .dialogs import TagsDialog, VersionDialog, WhatsNewDialog
 from .timemachine import TimeMachineDialog
 from .troubleshoot import BisectDialog
 
@@ -91,7 +91,8 @@ class MineTab(tk.Frame):
         self.folder_combo.bind("<<ComboboxSelected>>", lambda _e: self.choose_folder(self.folder_var.get()))
         for key, cmd in (("folder.new", self.new_folder), ("folder.duplicate", self.duplicate_folder),
                          ("folder.rename", self.rename_folder), ("folder.delete", self.delete_folder),
-                         ("share.export", self.export_folder), ("share.import", self.import_folder)):
+                         ("share.export", self.export_folder), ("share.import", self.import_folder),
+                         ("list.export", self.export_list)):
             ttk.Button(folder_box, text=tr(key), command=cmd).pack(side="left", padx=(4, 0))
         self.check_btn = ttk.Button(bar, text=tr("mine.check"), command=self.check_updates)
         self.check_btn.pack(side="left")
@@ -122,7 +123,7 @@ class MineTab(tk.Frame):
         self.show_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
         tk.Label(filt, text=tr("mine.show_label"), bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(side="right", padx=(12, 6))
-        self.sort_keys = ["order", "name", "size", "added", "updated"]
+        self.sort_keys = ["order", "approval", "name", "size", "added", "updated"]
         self.sort_labels = [tr(f"mine.sort_{k}") for k in self.sort_keys]
         self.sort_var = tk.StringVar(value=self.sort_labels[0])
         sort_combo = ttk.Combobox(filt, textvariable=self.sort_var, values=self.sort_labels,
@@ -376,7 +377,9 @@ class MineTab(tk.Frame):
             mods = [m for m in mods if all(
                 w in f"{m.name} {m.slug} {m.note} {' '.join(m.tags)}".lower() for w in words)]
         key = self.sort_key()
-        if key == "name":
+        if key == "approval":
+            mods = sorted(mods, key=self.lib.approval_rank)
+        elif key == "name":
             mods = sorted(mods, key=lambda m: m.name.lower())
         elif key == "size":
             mods = sorted(mods, key=lambda m: -self.lib.mod_size(m))
@@ -505,6 +508,8 @@ class MineTab(tk.Frame):
                  ("mine.ctx_details", self.open_details, one),
                  ("mine.open", self.open_page, True),
                  ("rollback.button", self.rollback, True),
+                 ("versions.button", self.choose_version,
+                  one and ids[0] in self.lib.mods and self.lib.mods[ids[0]].source != SOURCE_FILE),
                  ("mine.note", self.edit_note, True),
                  ("tags.button", self.edit_tags, True),
                  None,
@@ -770,6 +775,41 @@ class MineTab(tk.Frame):
                 self.lib.rollback(i, log=self.app.log, progress=self.app.on_progress)
 
         self.app.run(tr("rollback.working"), work)
+
+    def choose_version(self):
+        ids = self.selected_ids()
+        if len(ids) != 1 or ids[0] not in self.lib.mods or self.app.busy:
+            return
+        mid = ids[0]
+
+        def work():
+            versions = self.lib.available_versions(mid)
+            self.app.post(self._show_versions, mid, versions)
+
+        self.app.run(tr("versions.loading"), work)
+
+    def _show_versions(self, mid: int, versions: list[dict]):
+        self.version_dialog = VersionDialog(self.app, mid, versions, self._install_version)
+
+    def _install_version(self, mid: int, file_id: int):
+        if game.is_running():
+            self.app.show_error(tr("mine.close_game_first"))
+            return
+        self.app.run(tr("versions.installing"), lambda: self.lib.install_version(
+            mid, file_id, log=self.app.log, progress=self.app.on_progress))
+
+    def export_list(self):
+        path = filedialog.asksaveasfilename(parent=self, defaultextension=".txt",
+                                            initialfile=f"karl-{self.lib.active_folder}.txt",
+                                            filetypes=[("Text", "*.txt")])
+        if not path:
+            return
+        try:
+            n = self.lib.export_list(Path(path))
+        except OSError as err:
+            self.app.show_error(str(err))
+            return
+        self.app.set_status(tr("list.exported", n=n, path=path))
 
     def _dev_settings_changed(self):
         cfg = self.app.config_

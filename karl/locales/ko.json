@@ -442,5 +442,21 @@
   "mine.close_game_first": "설치하거나 저장하기 전에 DRG를 종료하세요. 게임이 모드 파일을 사용 중이라 Karl이 변경할 수 없습니다.",
   "integ.no_tool": "통합 도구(karl-merge)가 없습니다. GitHub에서 전체 Karl 릴리스를 내려받으세요.",
   "integ.failed": "모드 통합 실패: {error}",
-  "integ.skipped": "{name}: 통합에서 제외됨 ({error})"
+  "integ.skipped": "{name}: 통합에서 제외됨 ({error})",
+  "mine.sort_approval": "카테고리",
+  "list.export": "목록 내보내기",
+  "list.exported": "모드 {n}개 목록을 {path}에 저장했습니다",
+  "versions.button": "버전 선택…",
+  "versions.title": "{name}의 버전",
+  "versions.hint": "설치할 버전을 고르세요. 이전 버전을 고르면 Karl이 고정하고 자동으로 업데이트하지 않습니다.",
+  "versions.col_version": "버전",
+  "versions.col_date": "날짜",
+  "versions.col_size": "크기",
+  "versions.col_state": "상태",
+  "versions.current": "사용 중",
+  "versions.install": "설치",
+  "versions.loading": "mod.io에서 버전을 찾는 중...",
+  "versions.installing": "선택한 버전을 설치하는 중...",
+  "versions.installed": "{name}: 버전 {version} 설치됨",
+  "versions.none": "이 모드는 mod.io에 사용 가능한 버전이 없습니다."
 }
