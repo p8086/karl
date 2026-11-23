@@ -1076,24 +1076,6 @@ class InstallsAndScaleTests(unittest.TestCase):
         self.assertEqual(cfg.active_install, "main")
 
 class ProtonFixTests(unittest.TestCase):
-    def test_proton_settings(self):
-        from karl import integration
-        ini = Path(tempfile.mkdtemp()) / "UE4SS-settings.ini"
-        ini.write_text("[Hooks]\nHookProcessInternal = 1\nHookBeginPlay=true\n"
-                       "HookEngineTick = 0\n[CrashDump]\nEnableDumping = 1\nFullMemoryDump = 1\n"
-                       "[General]\nbUseUObjectArrayCache = true\n", encoding="utf-8")
-        self.assertTrue(integration.proton_hooks_on(ini))
-        self.assertTrue(integration.proton_settings(ini))
-        text = ini.read_text(encoding="utf-8")
-        self.assertIn("HookProcessInternal = 0", text)
-        self.assertIn("HookBeginPlay=0", text)
-        self.assertIn("EnableDumping = 0", text)
-        self.assertIn("FullMemoryDump = 1", text)
-        self.assertIn("bUseUObjectArrayCache = true", text)
-        self.assertFalse(integration.proton_hooks_on(ini))
-        self.assertFalse(integration.proton_settings(ini))
-        self.assertFalse(integration.proton_settings(ini.with_name("missing.ini")))
-
     def test_names_unescaped(self):
         from karl.modio import dependency_info, mod_name
         self.assertEqual(mod_name({"name": "vitals &amp; resources hud "}), "vitals & resources hud")

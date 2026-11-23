@@ -27,11 +27,19 @@ jobs:
           v=$(python3 -c "import karl; print(karl.VERSION)")
           test "v$v" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} ma karl/__init__.py dice $v"; exit 1; }
 
-  windows:
+  merge:
     needs: test
+    uses: ./.github/workflows/merge.yml
+
+  windows:
+    needs: merge
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: merge-windows
+          path: karl/bin
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -44,7 +52,7 @@ jobs:
           --collect-all tkinterdnd2 --collect-submodules pystray
           --add-data "karl\assets;karl\assets"
           --add-data "karl\locales;karl\locales"
-          --add-data "karl\loader;karl\loader"
+          --add-binary "karl\bin\karl-merge.exe;karl\bin"
           main.py
       - uses: actions/upload-artifact@v4
         with:
@@ -52,10 +60,15 @@ jobs:
           path: dist/Karl.exe
 
   linux:
-    needs: test
+    needs: merge
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: merge-linux
+          path: karl/bin
+      - run: chmod +x karl/bin/karl-merge
       - name: Python con Tkinter
         run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv xvfb
       - name: karl
@@ -68,7 +81,7 @@ jobs:
             --collect-all tkinterdnd2 --collect-submodules pystray --collect-submodules Xlib \
             --add-data "karl/assets:karl/assets" \
             --add-data "karl/locales:karl/locales" \
-            --add-data "karl/loader:karl/loader" \
+            --add-binary "karl/bin/karl-merge:karl/bin" \
             main.py
       - name: Copertine nell'eseguibile
         run: xvfb-run -a dist/karl --check-imagetk

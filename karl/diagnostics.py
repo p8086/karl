@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import os
 import platform
-import re
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from . import VERSION, game, integration, log as karl_log, proton
+from . import VERSION, game, integration, log as karl_log, merge
 from .entry import SOURCE_FILE
 from .i18n import human_size
 from .modio import mask_token
@@ -139,64 +138,28 @@ def _game_folder(lib: "Library", paks: Path, add) -> None:
     foreign = lib.foreign_loader_files()
     if foreign:
         add(WARN, "Other mod loaders found: " + ", ".join(str(f.name) for f in foreign))
-    st = integration.status(paks)
-    add(OK if st == "ok" else WARN, f"Blueprint mod support (UE4SS + Karl loader): {st}")
-    ue = integration.ue4ss_dir(integration.win64_dir(paks))
-    if ue is not None:
-        _loader_log(ue, add)
-    if not proton.needed():
+    win64 = integration.win64_dir(paks)
+    if merge.karl_ue4ss_active(win64, integration.ue4ss_dir(win64)):
+        add(WARN, "Old UE4SS + Karl loader still active (press Install and save to remove it)")
+    tool = merge.tool_path()
+    add(OK if tool else FAIL, f"Integration tool: {tool or 'missing'}")
+    mods = lib.integration_mods()
+    if not mods:
+        add(OK, "Integration pak: not needed (no active mods)")
         return
-    if ue is not None:
-        hooks = integration.proton_hooks_on(ue / "UE4SS-settings.ini")
-        add(WARN if hooks else OK,
-            "Proton: UE4SS hooks " + ("ON (DRG can crash at startup)" if hooks else "off"))
-    pfx = proton.prefix_for(paks)
-    if pfx is None:
-        add(WARN, "Proton: prefix not found (start DRG once with Steam)")
-    elif proton.has_override(pfx):
-        add(OK, "Proton: dwmapi override set")
+    pak = paks / merge.PAK_NAME
+    if not pak.is_file():
+        add(WARN, "Integration pak: missing (press Install and save)")
+    elif lib.integration_outdated():
+        add(WARN, "Integration pak: out of date (press Install and save)")
     else:
-        add(WARN, "Proton: dwmapi override missing")
-
-
-SLOW_START_MS = 3000
-
-
-def _loader_log(ue: Path, add) -> None:
-    try:
-        lines = (ue / "UE4SS.log").read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return
-    starts = [i for i, ln in enumerate(lines) if "[Karl] KarlLoader" in ln]
-    if not starts:
-        return
-    run = lines[starts[-1]:]
-    started = sum(1 for ln in run if "[Karl] avviata " in ln)
-    failed = sorted({ln.split("non riesco ad avviare", 1)[1].strip()
-                     for ln in run if "non riesco ad avviare" in ln})
-    msg = f"Karl loader (last game start): {started} blueprint(s) started"
-    if failed:
-        msg += ", not started: " + ", ".join(failed[:10])
-    add(WARN if failed else OK, msg)
-    totals, frozen = [], [0]
-    for ln in run:
-        m = re.search(r", ([^,]+), tentativo \d+:.*, (\d+) ms$", ln)
-        if m:
-            totals.append(int(m.group(2)))
-            if "anticipo" not in m.group(1):
-                frozen.append(int(m.group(2)))
-    if not totals:
-        return
-    slow: dict[str, int] = {}
-    for ln in run:
-        m = re.search(r"\[Karl\] avviata (.+) \(/.*\) in (\d+) ms$", ln)
-        if m:
-            slow[m.group(1)] = max(slow.get(m.group(1), 0), int(m.group(2)))
-    top = sorted(slow.items(), key=lambda kv: -kv[1])[:5]
-    msg = f"Karl loader: longest start {max(totals)} ms, game frozen up to {max(frozen)} ms"
-    if top:
-        msg += "; slowest mods: " + ", ".join(f"{n} {t} ms" for n, t in top)
-    add(WARN if max(frozen) >= SLOW_START_MS else OK, msg)
+        add(OK, f"Integration pak: {human_size(pak.stat().st_size)}, "
+                f"{len(lib.blueprint_mods())} blueprint mod(s)")
+    skipped = lib.integration_skipped()
+    if skipped:
+        add(WARN, "Integration skipped: " + "; ".join(f"{n}: {e}" for n, e in skipped[:10]))
+    if lib.integration_error:
+        add(FAIL, f"Integration error: {lib.integration_error}")
 
 
 def _modio(lib: "Library", network: bool, add) -> None:

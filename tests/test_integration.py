@@ -1,11 +1,9 @@
-import io
 import json
 import os
 import struct
 import sys
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp())
@@ -13,9 +11,10 @@ os.environ["XDG_CONFIG_HOME"] = str(TMP / "cfg")
 os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from karl import game, integration, pakfile, proton
+from karl import game, merge, pakfile, proton
 from karl.config import Config
 from karl.library import Library
+from karl.modio import ModioError
 
 
 def fstring(s: str) -> bytes:
@@ -50,28 +49,32 @@ def make_pak(mount: str, files: dict[str, list[str]], seed: int = 0x1234) -> byt
     return fdi + index + footer
 
 
-def ue4ss_zip() -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("dwmapi.dll", b"proxy")
-        z.writestr("ue4ss/UE4SS.dll", b"ue4ss")
-        z.writestr("ue4ss/UE4SS-settings.ini",
-                   "[Debug]\nConsoleEnabled = 1\nGuiConsoleEnabled = 1\nGuiConsoleVisible = 1\n")
-        z.writestr("ue4ss/Mods/mods.txt", "BPModLoaderMod : 1\n")
-    return buf.getvalue()
+FAKE_TOOL = """import json, sys
+job = json.load(open(sys.argv[1], encoding="utf-8"))
+for m in job["mods"]:
+    if any("broken" in p for p in m["paks"]):
+        print("SKIP\\t" + m["name"] + "\\tbad pak")
+with open(job["out"], "w", encoding="utf-8") as f:
+    json.dump({"game": job["game_pak"], "mods": [m["name"] for m in job["mods"]],
+               "paks": [p for m in job["mods"] for p in m["paks"]], "meta": job["meta"]}, f)
+print("OK\\t" + str(len(job["mods"])))
+"""
 
 
-def fake_fetch(url: str) -> bytes:
-    if "api.github.com" in url:
-        return json.dumps({"assets": [
-            {"name": "zDEV-UE4SS_v3.0.1.zip", "browser_download_url": "https://x/dev.zip"},
-            {"name": "UE4SS_v3.0.1.zip", "browser_download_url": "https://x/user.zip"}]}).encode()
-    assert url == "https://x/user.zip", url
-    return ue4ss_zip()
+def fake_tool(folder: Path) -> Path:
+    script = folder / "fake_merge.py"
+    script.write_text(FAKE_TOOL, encoding="utf-8")
+    tool = folder / "karl-merge"
+    tool.write_text(f"#!/bin/sh\nexec '{sys.executable}' '{script}' \"$@\"\n", encoding="utf-8")
+    tool.chmod(0o755)
+    return tool
 
 
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
+        import shutil
+        shutil.rmtree(TMP / "cfg", ignore_errors=True)
+        shutil.rmtree(TMP / "cache", ignore_errors=True)
         self.root = Path(tempfile.mkdtemp())
         self.steamapps = self.root / "steamapps"
         self.fsd = self.steamapps / "common" / "Deep Rock Galactic" / "FSD"
@@ -81,9 +84,21 @@ class IntegrationTests(unittest.TestCase):
         self.win64 = self.fsd / "Binaries" / "Win64"
         self.win64.mkdir(parents=True)
         (self.win64 / "FSD-Win64-Shipping.exe").write_bytes(b"exe")
-        saved = proton.needed
-        proton.needed = lambda: False
-        self.addCleanup(setattr, proton, "needed", saved)
+        self.running = False
+        saved = game.is_running
+        game.is_running = lambda: self.running
+        self.addCleanup(setattr, game, "is_running", saved)
+        os.environ["KARL_MERGE_TOOL"] = str(fake_tool(self.root))
+        self.addCleanup(os.environ.pop, "KARL_MERGE_TOOL", None)
+
+    def built(self) -> dict:
+        return json.loads((self.paks / merge.PAK_NAME).read_text(encoding="utf-8"))
+
+    def add(self, lib, name, mount="../../../FSD/Content/X/", files=("InitCave.uasset",)):
+        src = self.root / "src"
+        src.mkdir(exist_ok=True)
+        (src / f"{name}.pak").write_bytes(make_pak(mount, {"/": list(files)}))
+        return lib.add_local_file(str(src / f"{name}.pak"))
 
     def test_pak_reader(self):
         pak = self.root / "m.pak"
@@ -99,171 +114,80 @@ class IntegrationTests(unittest.TestCase):
         with self.assertRaises(pakfile.PakError):
             pakfile.list_files(bad)
 
-    def test_install_and_mod_list(self):
+    @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
+    def test_integration_pak_follows_priority(self):
         lib = Library(Config(paks_dir=str(self.paks)))
-        self.assertEqual(integration.status(self.paks), "no_ue4ss")
-        src = self.root / "src"
-        src.mkdir()
-        (src / "hud.pak").write_bytes(make_pak("../../../FSD/Content/HUD/",
-                                               {"/": ["InitSpacerig.uasset", "InitCave.uasset"]}))
-        (src / "tex.pak").write_bytes(make_pak("../../../", {"FSD/Content/Tex/": ["T.uasset"]}))
-        hud = lib.add_local_file(str(src / "hud.pak"))
-        lib.add_local_file(str(src / "tex.pak"))
-        self.assertEqual(lib.needs_integration(), 1)
+        hud = self.add(lib, "hud", "../../../FSD/Content/HUD/", ("InitSpacerig.uasset", "InitCave.uasset"))
+        tex = self.add(lib, "tex", "../../../", ("T.uasset",))
+        self.assertFalse(lib.integration_outdated())
+        built = self.built()
+        self.assertEqual(built["game"], str(self.paks / "FSD-WindowsNoEditor.pak"))
+        self.assertEqual(sorted(built["mods"]), ["hud", "tex"])
+        self.assertTrue(all(Path(p).parent == self.paks for p in built["paks"]))
+        self.assertEqual(lib.blueprint_mods()[0][0], "hud")
+        self.assertEqual(built["meta"]["version"], merge.MINT_VERSION)
+        self.assertEqual(sorted(m["name"] for m in built["meta"]["mods"]), ["hud", "tex"])
+        self.assertEqual({m["approval"] for m in built["meta"]["mods"]}, {"Sandbox"})
+        self.assertFalse(any(m["required"] for m in built["meta"]["mods"]))
 
-        (self.win64 / "x3daudio1_7.dll").write_bytes(b"hook")
-        (self.win64 / "dwmapi.dll").write_bytes(b"altro-proxy")
-        (self.win64 / "ue4ss").mkdir()
-        (self.win64 / "ue4ss" / "UE4SSL.dll").write_bytes(b"ue4ssl")
-        (self.paks / "FSD-WindowsNoEditor_Mods.pak").write_bytes(b"bundle")
+        lib.set_order([hud.mod_id, tex.mod_id])
+        lib.apply({})
+        self.assertEqual(self.built()["mods"], ["hud", "tex"])
+        lib.set_order([tex.mod_id, hud.mod_id])
+        self.assertEqual(self.built()["mods"], ["hud", "tex"])
+        lib.apply({})
+        self.assertEqual(self.built()["mods"], ["tex", "hud"])
 
-        n = lib.install_integration(fetch=fake_fetch)
-        self.assertEqual(n, 1)
-        self.assertEqual(integration.status(self.paks), "ok")
-        backup = self.fsd / Library.BACKUP_DIR
-        self.assertEqual((backup / "Binaries" / "Win64" / "dwmapi.dll").read_bytes(), b"altro-proxy")
-        self.assertTrue((backup / "Binaries" / "Win64" / "ue4ss" / "UE4SSL.dll").exists())
-        self.assertFalse((self.paks / "FSD-WindowsNoEditor_Mods.pak").exists())
-        self.assertEqual((self.win64 / "dwmapi.dll").read_bytes(), b"proxy")
+        lib.set_enabled(tex.mod_id, False)
+        self.assertEqual(self.built()["mods"], ["hud"])
+        lib.set_enabled(hud.mod_id, False)
+        self.assertFalse((self.paks / merge.PAK_NAME).exists())
+        self.assertFalse((self.paks / merge.STAMP_NAME).exists())
+        self.assertFalse(lib.integration_outdated())
+
+    @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
+    def test_vanilla_and_game_running(self):
+        lib = Library(Config(paks_dir=str(self.paks)))
+        self.running = True
+        self.add(lib, "hud")
+        self.assertFalse((self.paks / merge.PAK_NAME).exists())
+        self.assertTrue(lib.integration_outdated())
+        with self.assertRaises(ModioError):
+            lib.install_integration()
+        self.running = False
+        self.assertEqual(lib.install_integration(), 1)
+        self.assertEqual(self.built()["mods"], ["hud"])
+        lib.start_vanilla()
+        self.assertFalse((self.paks / merge.PAK_NAME).exists())
+        lib.end_vanilla()
+        self.assertEqual(self.built()["mods"], ["hud"])
+
+    @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
+    def test_old_karl_ue4ss_is_disabled(self):
         ue = self.win64 / "ue4ss"
-        ini = (ue / "UE4SS-settings.ini").read_text()
-        self.assertIn("GuiConsoleVisible = 0", ini)
-        self.assertIn("ConsoleEnabled = 0", ini)
-        mods_txt = (ue / "Mods" / "mods.txt").read_text()
-        self.assertIn("KarlLoader : 1", mods_txt)
-        self.assertIn("BPModLoaderMod : 1", mods_txt)
-        self.assertTrue((ue / "Mods" / "KarlLoader" / "Scripts" / "main.lua").exists())
-        lua = (ue / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
-        self.assertIn('"/Game/HUD/InitCave.InitCave_C"', lua)
-        self.assertIn('"/Game/HUD/InitSpacerig.InitSpacerig_C"', lua)
-        self.assertIn('name = "hud", client = true,', lua.replace("hud.pak", "hud"))
-        self.assertNotIn("Tex", lua)
-        self.assertEqual(lib.needs_integration(), 0)
+        (ue / "Mods" / "KarlLoader" / "Scripts").mkdir(parents=True)
+        (ue / "UE4SS.dll").write_bytes(b"ue4ss")
+        (self.win64 / "dwmapi.dll").write_bytes(b"proxy")
+        lib = Library(Config(paks_dir=str(self.paks)))
+        self.assertTrue(lib.integration_outdated())
+        lib.install_integration()
+        self.assertFalse((self.win64 / "dwmapi.dll").exists())
+        backup = self.fsd / merge.UE4SS_BACKUP / "Binaries" / "Win64" / "dwmapi.dll"
+        self.assertEqual(backup.read_bytes(), b"proxy")
+        self.assertTrue((ue / "UE4SS.dll").exists())
+        self.assertFalse(lib.integration_outdated())
         self.assertEqual(lib.foreign_loader_files(), [])
 
-        lib.set_enabled(hud.mod_id, False)
-        lua = (ue / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
-        self.assertNotIn("HUD", lua)
-        lib.install_integration(fetch=lambda u: self.fail("non deve riscaricare"))
-        self.assertEqual((ue / "Mods" / "mods.txt").read_text().count("KarlLoader"), 1)
-
-    def test_spawn_order_puts_libraries_first(self):
-        from karl.entry import ModEntry
-        def entry(i, name, deps=None):
-            return ModEntry(mod_id=i, game_id=1, name=name, slug="", url="", deps=[{"id": d} for d in deps] if deps is not None else None)
-        mods = [entry(1, "A HUD", [3]), entry(2, "B Tool", [4]), entry(3, "Mod Hub", [5]),
-                entry(4, "Z Lib"), entry(5, "DRGLib", []), entry(6, "C Plain"), entry(7, "Loop", [8]),
-                entry(8, "Loop2", [7])]
-        names = [e.name for e in Library.spawn_order(mods)]
-        self.assertEqual(len(names), len(mods))
-        for lib_name, user in (("Mod Hub", "A HUD"), ("DRGLib", "Mod Hub"), ("Z Lib", "B Tool")):
-            self.assertLess(names.index(lib_name), names.index(user))
-        self.assertLess(names.index("Mod Hub"), names.index("C Plain"))
-        self.assertLess(names.index("Z Lib"), names.index("C Plain"))
-
-    def test_mod_list_marks_host_only_mods(self):
-        ue = self.root / "ue"
-        n = integration.write_mod_list(ue, [
-            ("Hub", {"spacerig": ["/Game/Hub/InitSpacerig.InitSpacerig_C"], "cave": [], "client": True}),
-            ("Selector", {"spacerig": [], "cave": ["/Game/Sel/InitCave.InitCave_C"], "client": False}),
-            ("Old", {"spacerig": ["/Game/Old/InitSpacerig.InitSpacerig_C"], "cave": []})])
-        self.assertEqual(n, 3)
-        lua = (ue / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
-        self.assertIn('name = "Hub", client = true,', lua)
-        self.assertIn('name = "Selector", client = false,', lua)
-        self.assertIn('name = "Old", client = true,', lua)
-
-    def test_online_switch_changes_client_flag(self):
+    @unittest.skipIf(sys.platform == "win32", "strumento finto solo POSIX")
+    def test_skipped_mods_and_missing_tool(self):
         lib = Library(Config(paks_dir=str(self.paks)))
-        src = self.root / "src"
-        src.mkdir()
-        (src / "sel.pak").write_bytes(make_pak("../../../FSD/Content/Sel/", {"/": ["InitCave.uasset"]}))
-        e = lib.add_local_file(str(src / "sel.pak"))
-        lib.install_integration(fetch=fake_fetch)
-        lua = lambda: (self.win64 / "ue4ss" / "Mods" / "KarlLoader" / "Scripts" / "karl_mods.lua").read_text()
-        self.assertIsNone(lib.set_online([e.mod_id]))
-        e.source, e.approval = "modio", "Approved"
-        lib.sync_loader()
-        self.assertIn("client = false", lua())
-        self.assertTrue(lib.set_online([e.mod_id]))
-        self.assertIn("client = true", lua())
-        self.assertFalse(lib.set_online([e.mod_id]))
-        self.assertIn("client = false", lua())
-
-    def test_loader_script_is_updated(self):
-        lib = Library(Config(paks_dir=str(self.paks)))
-        src = self.root / "src"
-        src.mkdir()
-        (src / "hud.pak").write_bytes(make_pak("../../../FSD/Content/HUD/", {"/": ["InitCave.uasset"]}))
-        lib.add_local_file(str(src / "hud.pak"))
-        lib.install_integration(fetch=fake_fetch)
-        script = self.win64 / "ue4ss" / "Mods" / "KarlLoader" / "Scripts" / "main.lua"
-        script.write_text('local VERSION = "2.0"\n', encoding="utf-8")
-        self.assertEqual(lib.sync_loader(), 1)
-        self.assertEqual(script.read_bytes(), integration.LOADER_SRC.read_bytes())
-        self.assertFalse(integration.update_loader(self.win64 / "ue4ss"))
-        text = script.read_text(encoding="utf-8")
-        self.assertIn("ExecuteWithDelay", text)
-        self.assertNotIn("on_player_ready", text)
-        start = text[text.index("local function start("):text.index("local function early(")]
-        self.assertIn("if not run(key, st, nil, world) then", start)
-        self.assertNotIn("ExecuteWithDelay", start)
-        self.assertIn("NotifyOnNewObject", text)
-        self.assertNotIn("st.world", text)
-        self.assertNotIn(".mark", text)
-
-    def test_diagnostics_reads_loader_log(self):
-        from karl import diagnostics
-        ue = self.root / "ue"
-        ue.mkdir()
-        out = []
-        add = lambda level, msg: out.append((level, msg))
-        diagnostics._loader_log(ue, add)
-        self.assertEqual(out, [])
-        (ue / "UE4SS.log").write_text(
-            "[Lua] [Karl] KarlLoader 2.0: 2 mod con blueprint\n"
-            "[Lua] [Karl] non riesco ad avviare Old (/Game/Old/X.X_C)\n"
-            "[Lua] [Karl] KarlLoader 2.1: 2 mod con blueprint\n"
-            "[Lua] [Karl] avviata Mod Hub (/Game/Hub/InitSpacerig.InitSpacerig_C)\n"
-            "[Lua] [Karl] non riesco ad avviare Secondary (/Game/Sec/InitCave.InitCave_C)\n"
-            "[Lua] [Karl] non riesco ad avviare Secondary (/Game/Sec/InitCave.InitCave_C)\n",
-            encoding="utf-8")
-        diagnostics._loader_log(ue, add)
-        self.assertEqual(out, [(diagnostics.WARN, "Karl loader (last game start): 1 blueprint(s) started, "
-                                "not started: Secondary (/Game/Sec/InitCave.InitCave_C)")])
-        out.clear()
-        (ue / "UE4SS.log").write_text(
-            "[Lua] [Karl] KarlLoader 2.2: 1 mod con blueprint\n"
-            "[Lua] [Karl] avviata Hub (/Game/Hub/InitCave.InitCave_C)\n"
-            "[Lua] [Karl] cave, client, ClientRestart, tentativo 1: avviate 1, in attesa 0, saltate 0\n",
-            encoding="utf-8")
-        diagnostics._loader_log(ue, add)
-        self.assertEqual(out, [(diagnostics.OK, "Karl loader (last game start): 1 blueprint(s) started")])
-        out.clear()
-        (ue / "UE4SS.log").write_text(
-            "[Lua] [Karl] KarlLoader 2.3: 2 mod con blueprint\n"
-            "[Lua] [Karl] avviata Hub (/Game/Hub/InitCave.InitCave_C) in 120 ms\n"
-            "[Lua] [Karl] avviata Big (/Game/Big/InitCave.InitCave_C) in 4100 ms\n"
-            "[Lua] [Karl] cave, client, ClientRestart, tentativo 1: avviate 2, in attesa 0, saltate 0"
-            " (non Verified nella lobby di un altro), 4300 ms\n"
-            "[Lua] [Karl] avviata Hub (/Game/Hub/InitSpacerig.InitSpacerig_C) in 90 ms\n"
-            "[Lua] [Karl] spacerig, host, ClientRestart, tentativo 1: avviate 1, in attesa 0, saltate 0"
-            " (non Verified nella lobby di un altro), 95 ms\n",
-            encoding="utf-8")
-        diagnostics._loader_log(ue, add)
-        self.assertEqual(out[0], (diagnostics.OK, "Karl loader (last game start): 3 blueprint(s) started"))
-        self.assertEqual(out[1], (diagnostics.WARN, "Karl loader: longest start 4300 ms, game frozen up to 4300 ms;"
-                                                    " slowest mods: Big 4100 ms, Hub 120 ms"))
-        out.clear()
-        (ue / "UE4SS.log").write_text(
-            "[Lua] [Karl] KarlLoader 2.4: 1 mod con blueprint\n"
-            "[Lua] [Karl] avviata Big (/Game/Big/InitCave.InitCave_C) in 40 ms\n"
-            "[Lua] [Karl] cave, client, anticipo, tentativo 1: avviate 90, in attesa 0, saltate 0"
-            " (non Verified nella lobby di un altro), 6000 ms\n",
-            encoding="utf-8")
-        diagnostics._loader_log(ue, add)
-        self.assertEqual(out[1], (diagnostics.OK, "Karl loader: longest start 6000 ms, game frozen up to 0 ms;"
-                                                  " slowest mods: Big 40 ms"))
+        self.add(lib, "broken")
+        self.assertEqual(lib.integration_skipped(), [["broken", "bad pak"]])
+        os.environ["KARL_MERGE_TOOL"] = str(self.root / "nothing")
+        self.add(lib, "other")
+        self.assertTrue(lib.integration_error)
+        with self.assertRaises(ModioError):
+            lib.install_integration()
 
     def test_hide_asset_registry(self):
         import hashlib
@@ -299,13 +223,6 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("FSD/AssetRegistry.krl", pakfile.list_files(installed))
         self.assertIn("FSD/AssetRegistry.bin", pakfile.list_files(Path(e.cached_paks[0])))
 
-    def test_zip_path_traversal(self):
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("../../evil.dll", b"x")
-        with self.assertRaises(integration.IntegrationError):
-            integration.extract_safely(buf.getvalue(), self.win64)
-
 
 USER_REG = """WINE REGISTRY Version 2
 ;; All keys relative to \\User\\S-1-5-21-0-0-0-1000
@@ -322,53 +239,13 @@ USER_REG = """WINE REGISTRY Version 2
 """
 
 
-class ProtonTests(IntegrationTests):
+class ProtonTests(unittest.TestCase):
     def setUp(self):
-        super().setUp()
-        proton.needed = lambda: True
-        self.running = False
-        saved = game.is_running
-        game.is_running = lambda: self.running
-        self.addCleanup(setattr, game, "is_running", saved)
-        self.pfx = self.steamapps / "compatdata" / "548430" / "pfx"
+        self.pfx = Path(tempfile.mkdtemp()) / "pfx"
 
     def make_prefix(self, text=USER_REG):
         self.pfx.mkdir(parents=True)
         (self.pfx / "user.reg").write_text(text)
-
-    def test_install_and_mod_list(self):
-        self.make_prefix()
-        super().test_install_and_mod_list()
-        self.assertTrue(proton.has_override(self.pfx))
-
-    def test_proton_override(self):
-        lib = Library(Config(paks_dir=str(self.paks)))
-        src = self.root / "src"
-        src.mkdir()
-        (src / "hud.pak").write_bytes(make_pak("../../../FSD/Content/HUD/",
-                                               {"/": ["InitSpacerig.uasset"]}))
-        lib.add_local_file(str(src / "hud.pak"))
-        self.assertEqual(lib.needs_integration(), 1)
-        lib.install_integration(fetch=fake_fetch)
-        self.assertEqual(integration.status(self.paks), "no_prefix")
-        self.assertTrue(lib.waiting_first_launch())
-        self.assertEqual(lib.needs_integration(), 0)
-        self.make_prefix()
-        self.assertEqual(integration.status(self.paks), "no_override")
-        self.assertEqual(lib.needs_integration(), 1)
-        self.running = True
-        self.assertFalse(lib.fix_proton())
-        self.assertEqual(lib.sync_loader(), 1)
-        self.assertEqual(integration.status(self.paks), "no_override")
-        self.running = False
-        lib.sync_loader()
-        self.assertEqual(integration.status(self.paks), "ok")
-        reg = (self.pfx / "user.reg").read_text()
-        self.assertIn('[Software\\\\Wine\\\\DllOverrides]', reg)
-        self.assertIn('"dwmapi"="native,builtin"', reg)
-        self.assertIn('"Audio"="pulse"', reg)
-        self.assertEqual((self.pfx / "user.reg.karl-backup").read_text(), USER_REG)
-        self.assertFalse(proton.set_override(self.pfx))
 
     def test_existing_section(self):
         self.make_prefix(USER_REG + '\n[Software\\\\Wine\\\\DllOverrides] 1700000001\n'

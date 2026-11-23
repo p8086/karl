@@ -42,8 +42,7 @@ Pillow is used for mod covers, which are often JPEG. Without it Karl still works
 
 Karl finds the game on its own, also with Steam installed from Flatpak or Snap and in libraries on other drives or the SD card. Everything else works as on Windows. On top of that:
 
-- **Blueprint mods.** Under Proton, UE4SS only starts if Wine uses the `dwmapi.dll` in the game folder. Karl sets this up by itself in DRG's Proton prefix (`steamapps/compatdata/548430/pfx/user.reg`, the same thing `winecfg` would do), so you **don't** need to add `WINEDLLOVERRIDES` to the Steam launch options. The prefix only exists after the first launch: if you have never started DRG, Karl tells you. Start it once from Steam, close it and press **Install and save**. A copy of the original file is kept as `user.reg.karl-backup`.
-- **UE4SS hooks.** Under Proton, some of UE4SS 3.0.1's engine hooks make DRG crash on the loading screen (`EXCEPTION_ACCESS_VIOLATION`, with a `crash_*.dmp` in `Binaries/Win64`). On Linux Karl turns all of them off in `UE4SS-settings.ini` (the `Hook… = 0` lines) together with UE4SS's crash dumper, and checks it again every time it saves. Karl's loader starts blueprint mods through a native hook, so Mod Hub and the other blueprint mods keep working. **Diagnostics** shows the state on the *Proton: UE4SS hooks* line.
+- **Blueprint mods.** The integration is a normal pak in the game folder, so it works under Proton exactly as on Windows: no DLL overrides and no Steam launch options needed.
 - **Play** starts DRG through Steam (native or Flatpak). Karl detects the running game under Proton too, so developer mode can close and restart it as on Windows.
 
 ## Signing in with mod.io
@@ -154,7 +153,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Automatic checks.** In **Settings → Maintenance** you can have Karl check for updates of all your mods, in every folder, at every startup, and have Karl check for new versions of itself (see below).
 
-**Diagnostics and log.** **Settings → Diagnostics…** checks the game folder, write permissions, the mods (missing files, load order, required mods, conflicts, removed mods), other mod loaders, blueprint mod support, Proton and the mod.io connection, and lists the warnings and errors in the log since Karl was opened. **Copy** or **Save…** the report and attach it to an issue (the token is hidden). **Open log** opens `karl.log` directly.
+**Diagnostics and log.** **Settings → Diagnostics…** checks the game folder, write permissions, the mods (missing files, load order, required mods, conflicts, removed mods), other mod loaders, the mod integration and the mod.io connection, and lists the warnings and errors in the log since Karl was opened. **Copy** or **Save…** the report and attach it to an issue (the token is hidden). **Open log** opens `karl.log` directly.
 
 **Notification area.** With **Show Karl in the notification area** ticked (on by default), Karl's icon sits next to the clock: double-click it to bring Karl to the front, or right-click for **Play**, **Play without mods**, the folder list and **Quit Karl**. Tick **Closing the window keeps Karl in the notification area** to hide the window instead of quitting when you close it. On Linux the icon needs a desktop with a system tray (KDE, Cinnamon, XFCE; GNOME needs the AppIndicator extension).
 
@@ -183,7 +182,7 @@ The counters under the list show how many mods are installed, pending and waitin
 
 **Developer mode** (for modders). With the box ticked, every 2 seconds Karl checks the date of the .pak files of mods you added from a file: when you rebuild one, it reimports it and puts it back in the game by itself. While DRG is running the pak is in use: Karl waits until you close the game or, if you also ticked **Restart DRG when a mod changes**, closes DRG, updates the mod and starts it again.
 
-**Crash detection** (in the *Mod development* section, on by default). After you start DRG from Karl, Karl waits for the game to close and checks whether it crashed: the critical error in `FSD/Saved/Logs/FSD.log`, the game's crash reports and the `crash_*.dmp` files UE4SS writes in `Binaries/Win64`. If it did, a window shows the error and what changed since the last game that went well, with buttons to **Find the culprit mod** or open the time machine. If you close Karl while playing, it checks the next time it starts.
+**Crash detection** (in the *Mod development* section, on by default). After you start DRG from Karl, Karl waits for the game to close and checks whether it crashed: the critical error in `FSD/Saved/Logs/FSD.log`, the game's crash reports and any `crash_*.dmp` files in `Binaries/Win64`. If it did, a window shows the error and what changed since the last game that went well, with buttons to **Find the culprit mod** or open the time machine. If you close Karl while playing, it checks the next time it starts.
 
 **Find problem mod…** (same section). A guided search for the mod that breaks the game: Karl turns half of the mods that are on off, you press **Start DRG**, try what was going wrong, close the game and answer *The problem is still there* or *Now it works*. Karl halves again until one mod is left (about 5 tests with 30 mods). Required mods such as Mod Hub or DRGLib stay on together with the mods that use them, so they never break things for the wrong reason, and if Karl detects a crash during a test it tells you. At the end you can turn the culprit off and keep everything else, or put everything back. If you cancel, or Karl is closed halfway, your mods go back exactly as they were.
 
@@ -215,13 +214,15 @@ The game counts mods as "its own" in two places: your **mod.io account subscript
 
 ### Blueprint mods: Karl's integration
 
-Many mods (Mod Hub, HUDs, libraries like DRGLib) have two startup blueprints, `/Game/<Mod>/InitSpacerig` and `/Game/<Mod>/InitCave`, which the game's mod system normally spawns. Since Karl skips that system, it starts them itself:
+Many mods (Mod Hub, HUDs, libraries like DRGLib) have two startup blueprints, `/Game/<Mod>/InitSpacerig` and `/Game/<Mod>/InitCave`, which the game's mod system normally spawns. Since Karl skips that system, it starts them inside the game itself, without any DLL or script framework:
 
-- it installs **UE4SS** (open source framework, github.com/UE4SS-RE/RE-UE4SS, MIT license) in `FSD\Binaries\Win64`: it loads with the game through `dwmapi.dll` and runs Lua scripts;
-- it adds its own Lua mod **KarlLoader** (`karl/loader/main.lua`): when you enter the Space Rig it spawns the active mods' `InitSpacerig`, when a mission starts their `InitCave`. It starts them as soon as the map is ready for the player, before your dwarf spawns (many mods wait for that moment to set themselves up), and tries again a few times for a blueprint that isn't ready yet. As soon as the new map has its game state and your player controller, it starts the mods a few at a time, about 15 ms per frame, so the game keeps running and talking to the host even with many mods; whatever is left when your dwarf is about to spawn is started at once;
-- at every **Install and save** and before every **Play** it rewrites the list (`KarlLoader/Scripts/karl_mods.lua`), reading inside each pak which startup blueprints it contains (`karl/pakfile.py`). Required mods (libraries like Mod Hub and DRGLib) are started before the mods that need them. In someone else's lobby only *Verified* mods and your own `.pak` files are started: *Approved* and *Sandbox* mods change the gameplay and only run when you are the host, as with the game's own mod system.
+- at every **Install and save** Karl runs its integration tool, `karl-merge` (bundled with Karl, source in `tools/merge`). It reads the game pak and the active mods and writes one extra pak, `Content\Paks\FSD-WindowsNoEditor_karl_integration_9999_P.pak`, loaded after every mod;
+- that pak contains the game's player controller with three extra instructions at the start of `ReceiveBeginPlay`, which spawn the integration actor `MI_SpawnMods`; the actor finds the `InitSpacerig` and `InitCave` blueprints through the asset registry and starts them in the Space Rig and on missions;
+- it also contains the asset registry with the mods' assets added, the integration blueprints and a few patched menus that ignore the game's own mod check. If a mod replaces one of those game files, Karl patches the version of the mod that wins in the list;
+- the integration blueprints normally get the list of mods from a DLL that also tags the lobby name: Karl uses no DLL, it writes the list straight into the blueprint and turns off the check that would otherwise close your lobby and leave you in a solo game;
+- the pak is rebuilt only when something changes (mods, their order, a game update) and is removed when no mod is active. Mods that can't be read are left out and listed in the log and in **Diagnostics**.
 
-Karl offers to install it by itself when blueprint mods are enabled. If it finds the files of another mod loader (for example a hook `x3daudio1_7.dll` or its own UE4SS variant) it moves them to `FSD\_karl_backup_altri_loader`, without deleting them. If something doesn't start, the log is in `FSD\Binaries\Win64\ue4ss\UE4SS.log` (lines starting with `[Karl]`), and **Diagnostics** shows which blueprints didn't start the last time you played, how long starting the mods took, how long the game stayed frozen and which mods are the slowest.
+If you used an older Karl, the UE4SS it installed is switched off by itself the first time: its `dwmapi.dll` is moved to `FSD\_karl_backup_ue4ss`, nothing is deleted. If Karl finds the files of another mod loader (for example a hook `x3daudio1_7.dll`, its own UE4SS variant or a `mods_P.pak`) it moves them to `FSD\_karl_backup_altri_loader`, without deleting them. **Settings → Rebuild mod integration** builds the pak again from scratch.
 
 Two things to keep in mind:
 
@@ -234,9 +235,7 @@ Karl installs mods outside DRG's built-in mod menu, so **the game doesn't know w
 
 - when you **host**, your lobby is **not marked as modded** in the server browser, even with *Approved* or *Sandbox* mods enabled;
 - *Sandbox* mods **don't turn off progression** as they do when you enable them from the game's menu;
-- when you **join someone else's lobby**, Karl only starts *Verified* mods (client-side, allowed everywhere) and your own `.pak` files. *Approved* and *Sandbox* mods stay off until you host again, so you never bring gameplay changes into another player's game.
-
-Some *Approved* mods only affect your own screen (HUDs, menus, indicators) and are safe in any lobby. For those, right-click the mod and choose **Start in other players' lobbies**: the *Category* column shows *Approved · online* and Karl starts it when you join someone else's game too. Choose **Don't start in other players' lobbies** to go back. Turn it on only for mods that don't change gameplay (enemies, damage, missions, equipment), or your game will go out of sync with the host's: no weapons, enemies dealing no damage, objects that don't break. Note that the files a mod replaces inside the game (models, values, sounds) are loaded when DRG starts, so they stay active in every lobby: this switch only decides whether the mod's startup blueprints run.
+- when you **join someone else's lobby**, your active mods start as when you host. Mods that change gameplay (enemies, damage, missions, equipment) can make your game go out of sync with a host who doesn't use them: keep those for your own lobbies or for friends with the same mods.
 
 **Adding your own .pak files.** For a mod that isn't on mod.io, for example one you are making, press **Add .pak file…** and pick one or more `.pak` or `.zip` files. You can also paste the file path into the box, even in quotes as Windows' "Copy as path" does. Karl copies the pak into the game folder as `Content\Paks\FSD-WindowsNoEditor_karl_file-<name>_P.pak` and shows it as *.pak file* in the Category column. When you rebuild the mod, add the same file again: Karl updates the existing mod instead of creating a new one.
 
@@ -287,14 +286,15 @@ karl/entry.py            a mod in the library
 karl/library.py          the library: adding, removing, installing into Content/Paks
 karl/folders.py          folders, share codes and profiles
 karl/updates.py          updates, previous versions, dependencies
-karl/gamefiles.py        game folder: other loaders, UE4SS, Proton, conflicts, cache
+karl/gamefiles.py        game folder: other loaders, integration, conflicts, cache
 karl/pakfile.py          .pak index reader (finds InitSpacerig/InitCave)
 karl/timemachine.py      snapshots and restore (time machine)
 karl/history.py          change history
-karl/proton.py           Linux: dwmapi override in the Proton prefix
+karl/proton.py           Linux: finding the Proton prefix
 karl/game.py             starting, detecting and closing DRG (Windows and Linux)
-karl/integration.py      UE4SS + KarlLoader (starting blueprint mods)
-karl/loader/             KarlLoader Lua script
+karl/merge.py            integration pak (runs karl-merge)
+karl/integration.py      game folder paths, old UE4SS detection
+tools/merge/             karl-merge, the integration tool (Rust)
 karl/crash.py            crash detection
 karl/bisect.py           problem mod search
 karl/selfupdate.py       Karl updates
@@ -347,11 +347,11 @@ Found a bug or have an idea? Open an issue on the **Issues** page of the reposit
 - what you did, what you expected and what happened instead;
 - the error message or a screenshot, if any;
 - Karl's log file, `~/.cache/karl/karl.log` (on Windows `C:\Users\<you>\.cache\karl\karl.log`);
-- for blueprint mods that don't start: the UE4SS log, `FSD\Binaries\Win64\ue4ss\UE4SS.log` (the lines starting with `[Karl]` are the most useful).
+- for blueprint mods that don't start: the **Diagnostics** report and the game log, `FSD\Saved\Logs\FSD.log`.
 
 ## Credits
 
-- [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (MIT license), which Karl downloads and installs to start blueprint mods.
+- [mint](https://github.com/trumank/mint) by trumank and jieyouxu (MIT license): Karl's integration tool reuses its integration code and assets, see `tools/merge/LICENSE-mint`.
 - [mod.io](https://mod.io), whose public API powers the Browse tab and the downloads.
 - [Pillow](https://python-pillow.org), for mod covers.
 - [tkinterdnd2](https://github.com/Eliav2/tkinterdnd2), for drag and drop.

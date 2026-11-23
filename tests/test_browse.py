@@ -443,42 +443,30 @@ class CheckboxTests(GuiBase):
 
 
 class IntegrationAskTests(GuiBase):
-    def test_asks_again_after_decline(self):
+    def test_outdated_integration_is_rebuilt(self):
         app = gui.App()
         pump(app)
         installs = []
-        app.lib.needs_integration = lambda: 3
-        app.lib.waiting_first_launch = lambda: False
+        app.lib.integration_outdated = lambda: True
         app.lib.install_integration = lambda log=None: installs.append(1) or 3
-        answers = []
-        old = gui.app.messagebox.askyesno
-        self.addCleanup(setattr, gui.app.messagebox, "askyesno", old)
-        gui.app.messagebox.askyesno = lambda *a, **k: answers.append(1) or False
-        app.check_integration()
-        self.assertTrue(app.config_.ignore_integration)
-        app.check_integration()
-        self.assertEqual(len(answers), 1)
-
-        gui.app.messagebox.askyesno = lambda *a, **k: answers.append(1) or True
         app.busy = True
         fake_tk.after_queue.clear()
         app.check_integration(force=True)
-        self.assertEqual(len(answers), 1)
+        self.assertEqual(installs, [])
         app.busy = False
         fn, args = fake_tk.after_queue.pop(0)
         fn(*args)
         pump(app, 80)
-        self.assertEqual(len(answers), 2)
         self.assertEqual(installs, [1])
-        self.assertFalse(app.config_.ignore_integration)
-
-        app.config_.ignore_integration = True
+        self.assertEqual(app.status.get(), gui.app.tr("integ.done", n=3))
+        app.lib.integration_outdated = lambda: False
+        app.check_integration()
+        pump(app, 80)
+        self.assertEqual(installs, [1])
         app.install_integration_now()
         pump(app, 80)
         self.assertEqual(installs, [1, 1])
-        self.assertFalse(Config.load().ignore_integration)
         app.pool.shutdown(wait=True)
-
 
 class FolderTests(GuiBase):
     def test_folders_gui(self):
@@ -1336,37 +1324,6 @@ class FeatureTests(GuiBase):
         self.assertFalse(app.busy)
         self.assertEqual(self.messages()[-1][2], gui.app.tr("mine.close_game_first"))
         self.assertEqual(mine.wanted, {50: False})
-
-    def test_online_switch_for_host_only_mods(self):
-        app = self.make_app()
-        mine, lib = app.mine, app.lib
-        for i in (40, 41):
-            lib.add(f"https://mod.io/g/drg/m/mod-{i}")
-        lib.mods[40].approval = "Verified"
-        lib.mods[41].approval = "Approved"
-        mine.refresh()
-        ev = types.SimpleNamespace(x=1, y=1, x_root=1, y_root=1)
-        tr = gui.app.tr
-
-        def item(key):
-            return next((it for it in mine._menu.items if it and it["label"] == tr(key)), None)
-
-        mine.tree.__dict__["_hit"] = ("cell", "#2", "40")
-        mine._on_right_click(ev)
-        self.assertEqual(item("mine.ctx_online_on")["state"], "disabled")
-        mine.tree.selection_set(["40", "41"])
-        mine.tree.__dict__["_hit"] = ("cell", "#2", "41")
-        mine._on_right_click(ev)
-        item("mine.ctx_online_on")["command"]()
-        self.assertTrue(lib.mods[41].online)
-        self.assertFalse(lib.mods[40].online)
-        self.assertEqual(mine.tree._rows["41"][5], "Approved · " + tr("mine.online_mark"))
-        self.assertEqual(mine.tree._rows["40"][5], "Verified")
-        self.assertEqual(app.status.get(), tr("mine.online_done"))
-        mine._on_right_click(ev)
-        item("mine.ctx_online_off")["command"]()
-        self.assertFalse(lib.mods[41].online)
-        self.assertEqual(mine.tree._rows["41"][5], "Approved")
 
     def test_details_from_my_mods_and_browse(self):
         app = self.make_app()

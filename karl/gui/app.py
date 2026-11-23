@@ -86,38 +86,25 @@ class App(tk.Tk):
         if self.busy:
             self.after(300, lambda: self.check_integration(force))
             return
+        err = self.lib.integration_error
         try:
-            n = self.lib.needs_integration()
-            first_launch = self.lib.waiting_first_launch()
+            outdated = self.lib.integration_outdated()
         except Exception:
             return
-        if first_launch and not getattr(self, "_told_first_launch", False):
-            self._told_first_launch = True
-            messagebox.showinfo(APP_TITLE, tr("integ.proton_first_run"))
-        if not n:
-            return
-        if self.config_.ignore_integration and not force:
-            self.set_status(tr("integ.missing", n=n))
-            return
-        if not messagebox.askyesno(APP_TITLE, tr("integ.ask", n=n)):
-            self.config_.ignore_integration = True
-            self.config_.save()
-            self.set_status(tr("integ.missing", n=n))
-            return
-        self.install_integration_now()
+        if outdated and not game.is_running():
+            self.install_integration_now()
+        elif err and force:
+            self.set_status(tr("integ.failed", error=err))
 
     def install_integration_now(self):
         if self.busy:
             self.after(300, self.install_integration_now)
             return
-        if self.config_.ignore_integration:
-            self.config_.ignore_integration = False
-            self.config_.save()
         self.run(tr("integ.installing"), self._install_integration)
 
     def _install_integration(self):
         n = self.lib.install_integration(log=self.log)
-        self.post(self.set_status, tr("integ.done", n=max(n, 0)))
+        self.post(self.set_status, tr("integ.done", n=n))
 
     def check_modio_subscriptions(self, force: bool = False):
         if self.config_.ignore_modio_subs and not force:

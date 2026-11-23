@@ -14,13 +14,15 @@ python3 -m venv .venv-build
 .venv-build/bin/python -m pip install --upgrade pip >/dev/null
 .venv-build/bin/python -m pip install -r requirements.txt pyinstaller
 
+cargo build --release --manifest-path tools/merge/Cargo.toml
+
 .venv-build/bin/python -m PyInstaller --noconfirm --clean --onefile --windowed \
   --name karl \
   --hidden-import PIL.ImageTk --hidden-import PIL._imagingtk --hidden-import PIL._tkinter_finder \
   --collect-all tkinterdnd2 --collect-submodules pystray --collect-submodules Xlib \
   --add-data "karl/assets:karl/assets" \
   --add-data "karl/locales:karl/locales" \
-  --add-data "karl/loader:karl/loader" \
+  --add-binary "tools/merge/target/release/karl-merge:karl/bin" \
   main.py
 
 apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"

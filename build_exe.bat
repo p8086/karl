@@ -2,6 +2,8 @@
 
 python -m pip install -r requirements.txt pyinstaller || goto :errore
 
+cargo build --release --manifest-path tools\merge\Cargo.toml || goto :errore
+
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name Karl ^
   --hidden-import PIL.ImageTk --hidden-import PIL._imagingtk --hidden-import PIL._tkinter_finder ^
@@ -9,7 +11,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --icon karl\assets\icon.ico ^
   --add-data "karl\assets;karl\assets" ^
   --add-data "karl\locales;karl\locales" ^
-  --add-data "karl\loader;karl\loader" ^
+  --add-binary "tools\merge\target\release\karl-merge.exe;karl\bin" ^
   main.py || goto :errore
 
 echo.

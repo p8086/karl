@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import re
 import shutil
 import struct
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import game, integration, pakfile, paths, proton
-from .entry import SOURCE_FILE, ModEntry, approval_of
+from . import VERSION, game, integration, merge, pakfile, paths
+from .entry import ModEntry, approval_of
 from .i18n import tr
 from .modio import ModioError, mod_name
 from .pakfile import PakError, init_classes
@@ -200,34 +201,11 @@ class GameFilesMixin:
                 names.append(e.name)
         return names
 
-    @staticmethod
-    def spawn_order(entries: list) -> list:
-        by_id = {e.mod_id: e for e in entries}
-        needed = {d["id"] for e in entries for d in e.deps or []
-                  if d.get("id") in by_id and d.get("id") != e.mod_id}
-        out: list = []
-        placed: set = set()
-        visiting: set = set()
-
-        def visit(e) -> None:
-            if e.mod_id in placed or e.mod_id in visiting:
-                return
-            visiting.add(e.mod_id)
-            for d in e.deps or []:
-                dep = by_id.get(d.get("id"))
-                if dep is not None:
-                    visit(dep)
-            visiting.discard(e.mod_id)
-            placed.add(e.mod_id)
-            out.append(e)
-
-        for e in sorted(entries, key=lambda m: (m.mod_id not in needed, m.name.lower())):
-            visit(e)
-        return out
-
     def blueprint_mods(self) -> list[tuple[str, dict]]:
         out = []
-        for e in self.spawn_order([m for m in self.mods.values() if m.enabled]):
+        for e in self.mods.values():
+            if not e.enabled:
+                continue
             classes: dict[str, list[str]] = {"spacerig": [], "cave": []}
             for name in e.installed_paks:
                 try:
@@ -237,66 +215,87 @@ class GameFilesMixin:
                 classes["spacerig"] += c["spacerig"]
                 classes["cave"] += c["cave"]
             if classes["spacerig"] or classes["cave"]:
-                classes["client"] = (e.source == SOURCE_FILE or e.online
-                                     or e.approval in ("", "Verified"))
                 out.append((e.name, classes))
         return out
 
-    def integration_status(self) -> str:
-        return integration.status(self.paks_dir())
+    def integration_mods(self) -> list[tuple[str, list[Path]]]:
+        if self.config.vanilla_active:
+            return []
+        out = []
+        entries = sorted((e for e in self.mods.values() if e.enabled and e.installed_paks),
+                         key=lambda e: -self._installed_priority(e))
+        for e in entries:
+            paks = [self._installed_path(n) for n in e.installed_paks]
+            paks = [p for p in paks if p.is_file()]
+            if paks:
+                out.append((e.name, paks))
+        return out
 
-    def needs_integration(self) -> int:
-        try:
-            if self.integration_status() in ("ok", "no_prefix"):
-                return 0
-        except ModioError:
-            return 0
-        return len(self.blueprint_mods())
+    def integration_info(self) -> list[dict]:
+        by_name = {e.name: e for e in self.mods.values() if e.enabled}
+        out = []
+        for name, _ in self.integration_mods():
+            e = by_name.get(name)
+            out.append({"name": name, "version": e.version if e else "", "url": e.url if e else "",
+                        "author": getattr(e, "author", "") if e else "",
+                        "approval": (e.approval or "Sandbox") if e else "Sandbox"})
+        return out
 
-    def waiting_first_launch(self) -> bool:
-        try:
-            return self.integration_status() == "no_prefix" and bool(self.blueprint_mods())
-        except ModioError:
-            return False
+    @staticmethod
+    def _installed_priority(e: ModEntry) -> int:
+        found = [int(m.group(1)) for n in e.installed_paks
+                 for m in [re.search(r"_(\d+)_P\.pak$", n)] if m]
+        return max(found, default=0)
 
-    def fix_proton(self, log: Callable[[str], None] = lambda s: None) -> bool:
-        if not proton.needed():
-            return True
-        pfx = proton.prefix_for(self.paks_dir())
-        if pfx is None:
-            return False
-        if proton.has_override(pfx):
-            return True
-        if game.is_running():
-            return False
-        proton.set_override(pfx)
-        log(tr("integ.proton_set"))
-        return True
-
-    def sync_loader(self) -> int:
-        if not self.config.paks_dir:
-            return -1
+    def _game_dirs(self) -> tuple[Path, Path, Optional[Path]]:
         paks = self.paks_dir()
-        st = integration.status(paks)
-        if st not in integration.FILES_OK:
-            return -1
-        if st == "no_override":
-            self.fix_proton()
-        ue = integration.ue4ss_dir(integration.win64_dir(paks))
-        if proton.needed():
-            integration.proton_settings(ue / "UE4SS-settings.ini")
-        integration.update_loader(ue)
-        return integration.write_mod_list(ue, self.blueprint_mods())
-
-    def install_integration(self, fetch=None, log: Callable[[str], None] = lambda s: None) -> int:
-        paks = self.paks_dir()
-        if self.foreign_loader_files():
-            self.disable_foreign_loader()
         win64 = integration.win64_dir(paks)
-        ue = integration.ue4ss_dir(win64)
-        if ue is None or not (win64 / "dwmapi.dll").is_file():
-            kw = {"fetch": fetch} if fetch else {}
-            ue = integration.install_ue4ss(paks, log=log, **kw)
-        integration.install_loader(ue)
-        self.fix_proton(log=log)
-        return self.sync_loader()
+        return paks.parent.parent, win64, integration.ue4ss_dir(win64)
+
+    def integration_outdated(self) -> bool:
+        if not self.config.paks_dir:
+            return False
+        try:
+            paks = self.paks_dir()
+            fsd, win64, ue = self._game_dirs()
+        except ModioError:
+            return False
+        if merge.karl_ue4ss_active(win64, ue):
+            return True
+        return merge.outdated(paks, self.integration_mods(), VERSION)
+
+    def integration_skipped(self) -> list:
+        try:
+            return merge.read_stamp(self.paks_dir()).get("skipped", [])
+        except ModioError:
+            return []
+
+    def sync_integration(self, force: bool = False,
+                         log: Callable[[str], None] = lambda s: None) -> Optional[list]:
+        if not self.config.paks_dir:
+            return None
+        paks = self.paks_dir()
+        mods = self.integration_mods()
+        fsd, win64, ue = self._game_dirs()
+        ue4ss_on = merge.karl_ue4ss_active(win64, ue)
+        if not force and not ue4ss_on and not merge.outdated(paks, mods, VERSION):
+            return None
+        if game.is_running():
+            return None
+        merge.retire_ue4ss(fsd, win64, ue, log=log)
+        if force:
+            (paks / merge.STAMP_NAME).unlink(missing_ok=True)
+        return merge.build(paks, mods, VERSION, self.integration_info())
+
+    def install_integration(self, log: Callable[[str], None] = lambda s: None) -> int:
+        if game.is_running():
+            raise ModioError(tr("mine.close_game_first"))
+        try:
+            skipped = self.sync_integration(force=True, log=log) or []
+        except merge.ToolMissing:
+            raise ModioError(tr("integ.no_tool"))
+        except merge.MergeError as err:
+            raise ModioError(tr("integ.failed", error=err))
+        for name, err in skipped:
+            log(tr("integ.skipped", name=name, error=err))
+        return len(self.integration_mods())

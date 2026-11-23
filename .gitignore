@@ -6,3 +6,7 @@ _to_delete/
 build/
 dist/
 docs/logo_originale.png
+tools/merge/target/
+karl/bin/
+tools/merge/*.log
+tools/merge/dump_*.txt

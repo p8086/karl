@@ -1,0 +1,38 @@
+name: karl-merge
+
+on:
+  push:
+    paths:
+      - "tools/merge/**"
+      - ".github/workflows/merge.yml"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            bin: karl-merge.exe
+            name: merge-windows
+          - os: ubuntu-22.04
+            bin: karl-merge
+            name: merge-linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: tools/merge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/merge
+      - run: cargo build --release
+      - run: ./target/release/${{ matrix.bin }} --version
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: tools/merge/target/release/${{ matrix.bin }}

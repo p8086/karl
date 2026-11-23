@@ -34,6 +34,7 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         self.folders: dict[str, dict[int, bool]] = {}
         self.active_folder: str = ""
         self._changes: list[dict] = []
+        self.integration_error = ""
         self.load()
         self.history = History(paths.HISTORY_FILE)
         self.time_machine = TimeMachine(self, paths.SNAPSHOTS_FILE, paths.SNAPSHOT_BLOBS)
@@ -50,9 +51,10 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         self._save_folders()
         self._save_list()
         try:
-            self.sync_loader()
-        except Exception:
-            pass
+            self.integration_error = ""
+            self.sync_integration()
+        except Exception as err:
+            self.integration_error = str(err)
 
     def _save_list(self) -> None:
         paths.write_json(paths.LIBRARY_FILE, [asdict(m) for m in self.mods.values()])
@@ -293,25 +295,6 @@ class Library(FoldersMixin, UpdatesMixin, GameFilesMixin):
         for e in entries:
             e.favorite = value
         self._save_list()
-        return value
-
-    def host_only(self, mod_id: int) -> bool:
-        e = self.mods.get(mod_id)
-        return bool(e) and e.source != SOURCE_FILE and e.approval in ("Approved", "Sandbox")
-
-    def set_online(self, ids: list[int], value: Optional[bool] = None) -> Optional[bool]:
-        entries = [self.mods[i] for i in ids if self.host_only(i)]
-        if not entries:
-            return None
-        if value is None:
-            value = not all(e.online for e in entries)
-        for e in entries:
-            e.online = value
-        self._save_list()
-        try:
-            self.sync_loader()
-        except Exception:
-            pass
         return value
 
     @staticmethod
