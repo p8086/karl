@@ -107,7 +107,6 @@ Open an issue with your system, Karl's version, what happened, and the **Diagnos
 - [mint](https://github.com/trumank/mint) by trumank and jieyouxu (MIT license): Karl's integration tool reuses its integration code and assets, see `tools/merge/LICENSE-mint`.
 - [mod.io](https://mod.io), for the API behind Browse and the downloads.
 - [Pillow](https://python-pillow.org), [tkinterdnd2](https://github.com/Eliav2/tkinterdnd2) and [pystray](https://github.com/moses-palmer/pystray).
-- All the DRG modders: Karl only downloads their mods, they remain their authors' work.
 
 ## Disclaimer
 
