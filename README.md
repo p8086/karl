@@ -57,11 +57,6 @@ Why no email login? mod.io only allows it for apps using the game's official API
 
 Mods like Mod Hub, HUDs and DRGLib need their startup blueprints spawned in the Space Rig and on missions. Karl does it inside the game: at every **Install and save** its tool `karl-merge` builds one small extra pak (`FSD-WindowsNoEditor_karl_integration_9999_P.pak`) that starts those blueprints. No DLL or script framework is installed. **Settings → Rebuild mod integration** builds it again from scratch.
 
-Since Karl installs mods outside DRG's mod system, the game doesn't know which mods you use:
-
-- your lobby is **not marked as modded**, and *Sandbox* mods don't turn off progression;
-- your mods also start in other players' lobbies: keep gameplay mods (enemies, damage, missions) for your own games or friends with the same mods.
-
 Like mint, Karl keeps out of the game what often crashes it: the shader files some mods ship (`.ushaderbytecode`) are turned off in the installed copy, the mods' own asset registry is hidden, and leftover Karl paks that no longer belong to any mod are removed at every Install and save. **Diagnostics** also lists mods packed with an old pak format.
 
 If Karl finds files of another mod loader (`x3daudio1_7.dll`, `dwmapi.dll`, `mods_P.pak`) it offers to move them to a backup folder, deleting nothing. Karl only touches files starting with `karl_`.
