@@ -53,7 +53,7 @@ Why no email login? mod.io only allows it for apps using the game's official API
 - **Your own mods:** **Add .pak file…** adds a mod that isn't on mod.io; with **Developer mode** Karl reimports it every time you rebuild it.
 - **And more:** favorites, notes and tags, sort by category, required mods check, removed mods warning, safe downloads (MD5), several game installations, 17 languages, interface size, notification area icon, automatic Karl updates.
 
-## Blueprint mods and multiplayer
+## Blueprint mods
 
 Mods like Mod Hub, HUDs and DRGLib need their startup blueprints spawned in the Space Rig and on missions. Karl does it inside the game: at every **Install and save** its tool `karl-merge` builds one small extra pak (`FSD-WindowsNoEditor_karl_integration_9999_P.pak`) that starts those blueprints. No DLL or script framework is installed. **Settings → Rebuild mod integration** builds it again from scratch.
 
